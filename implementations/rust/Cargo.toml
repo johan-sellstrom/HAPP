@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/happ-core",
+  "crates/happ-crypto",
+  "crates/happ-provider",
+  "crates/happ-rp",
+  "crates/happd",
+  "crates/happ-conformance",
+]
+
+[workspace.package]
+version = "0.3.4"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://example.invalid/aaif/happ" # replace when you publish

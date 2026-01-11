@@ -1,0 +1,47 @@
+{
+  "version": "0.3.4",
+  "intentId": "2f4c8dd7-8d1f-4e4f-b2c2-0e5a9a6b2c4a",
+  "issuedAt": "2026-01-11T00:00:00Z",
+  "profile": "aaif.happ.profile.payment.transfer/v0.3.4",
+  "audience": {
+    "id": "did:web:rp.example",
+    "name": "Example Bank"
+  },
+  "agent": {
+    "id": "agent:demo",
+    "name": "Demo Agent",
+    "software": {
+      "name": "demo-agent",
+      "version": "0.1.0"
+    }
+  },
+  "action": {
+    "type": "payment.transfer",
+    "parameters": {
+      "amount": {
+        "currency": "GBP",
+        "value": "250.00"
+      },
+      "to": {
+        "name": "Acme Ltd",
+        "account": "GB33BUKB20201555555555"
+      },
+      "reference": "Invoice 1234"
+    }
+  },
+  "constraints": {
+    "expiresAt": "2026-01-11T00:10:00Z",
+    "oneTime": true
+  },
+  "display": {
+    "language": "en-GB",
+    "title": "Bank transfer",
+    "summary": "Transfer £250.00 to Acme Ltd (Invoice 1234).",
+    "riskNotice": "This will move money."
+  },
+  "policy": {
+    "requiredPoHPLevel": "AAIF-PoHP-3",
+    "jurisdiction": "UK",
+    "purpose": "payment"
+  }
+}
