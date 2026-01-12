@@ -89,6 +89,9 @@ AI-INTENT SHOULD include a `profile` string. Profiles define:
 
 If profile is absent or unknown, PP MUST use Generic Profile rules.
 
+Known profiles:
+- `ai_ui_confirm_v1` — AI UI confirmation / WYSIWYS profile ([ai-intent-profiles/ai-ui-confirm-v1.md](ai-intent-profiles/ai-ui-confirm-v1.md))
+
 ### 6.3 Envelopes (bounded flexibility)
 
 AI-INTENT MAY include `constraints.envelope` describing allowed parameter ranges or allow-lists (e.g., amount range, allowed payees). If present:
@@ -253,4 +256,3 @@ HAPP does not mitigate:
 ## References
 - RFC 8785 JSON Canonicalization Scheme: https://www.rfc-editor.org/rfc/rfc8785
 - MCP Specification: https://modelcontextprotocol.io/specification/2025-11-25
-

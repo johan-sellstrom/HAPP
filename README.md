@@ -104,6 +104,8 @@ python interop/run_conformance.py --sut http://127.0.0.1:8766
 
 - Spec: `specification/draft/happ-v0.3.4.md`
 - MCP profile: `specification/draft/mcp-profile-v0.3.4.md`
+- Profiles:
+  - `ai_ui_confirm_v1` (AI UI confirmation / WYSIWYS): `specification/draft/ai-intent-profiles/ai-ui-confirm-v1.md`
 - Conformance: `specification/draft/conformance-v0.3.md`
 - Entra adapter: `specification/draft/adapters/entra-oidc-v0.1.md`
 - Code: `implementations/python/happ/`
