@@ -113,6 +113,7 @@ python interop/run_conformance.py --sut http://127.0.0.1:8766
 ## Specification map
 
 - Core spec: `specification/draft/happ-v0.3.4.md`
+- RFC-style protocol draft: `specification/draft/happ-rfc-style-v0.3.4.md`
 - MCP profile: `specification/draft/mcp-profile-v0.3.4.md`
 - Conformance: `specification/draft/conformance-v0.3.md`
 - Entra adapter: `specification/draft/adapters/entra-oidc-v0.1.md`
