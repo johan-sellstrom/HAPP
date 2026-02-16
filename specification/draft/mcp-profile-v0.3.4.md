@@ -40,6 +40,8 @@ A) Agent-initiated:
 B) RP Challenge Mode:
 - `challenge` (HAPP-CHAL)
 
+For high-risk actions, MCP Hosts/Clients SHOULD prefer RP Challenge Mode over agent-initiated mode.
+
 All requests SHOULD include:
 - `requestId` (client-generated stable id to correlate retries)
 - `return.format` (`jwt` or `vc+json`)
@@ -48,6 +50,7 @@ All requests SHOULD include:
 
 If consent can be issued immediately, tool returns:
 - `structuredContent` containing the credential envelope (`schemas/happ-consent-credential.v0.3.schema.json`)
+- if request input used `challenge`, returned claims MUST carry matching `challengeId`
 
 If user interaction is required, PP SHOULD return a JSON-RPC error:
 - `code: -32042`
@@ -76,4 +79,4 @@ The host then navigates the user to the URL and retries the tool call after comp
   - `intent_hash`
   - `presentation_hash`
   - `aud` (RP audience)
-
+- For challenge-mode requests, PP MUST bind and return `claims.challengeId` equal to the supplied challenge.

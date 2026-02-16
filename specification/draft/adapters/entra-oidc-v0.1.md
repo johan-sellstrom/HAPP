@@ -33,6 +33,8 @@ PP SHOULD use:
 - `nonce` binding
 - `state` binding
 
+The OIDC `nonce` here is a session/transaction freshness value for the identity flow. It MUST NOT be embedded into AI-INTENT business semantics.
+
 Recommended endpoints:
 - Authorization endpoint: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize`
 - Token endpoint: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`
@@ -45,6 +47,8 @@ PP MUST validate:
 - `aud` matches PP’s Entra client id
 - `exp`/`nbf`/`iat`
 - `nonce` matches the authorization request
+
+PP MUST apply bounded clock skew when checking `exp`/`nbf`/`iat` (RECOMMENDED <= 300 seconds).
 
 ### 3.3 Subject normalization
 
@@ -98,3 +102,4 @@ If RP requires embedded evidence, RP MUST:
 - verify `nonce` / `nonceHash` binding,
 - enforce tenant restrictions and any required assurance conditions.
 
+RP SHOULD apply bounded clock skew to embedded-token time validation (`exp`/`nbf`/`iat`) consistently with RP credential-validation policy.

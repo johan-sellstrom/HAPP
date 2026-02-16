@@ -100,6 +100,22 @@ AI-INTENT MAY include `constraints.envelope` describing allowed parameter ranges
 
 If the action falls outside envelope constraints, a new AI-INTENT and new consent are required.
 
+### 6.4 Freshness and nonce placement
+
+AI-INTENT is the semantic description of the business action. It MUST be stable across retries for the same decision.
+
+AI-INTENT MUST NOT carry per-session freshness artifacts such as:
+- OIDC `nonce`/`state`,
+- one-time callback tokens,
+- transport/session correlation secrets.
+
+Freshness and replay resistance MUST be enforced outside AI-INTENT using:
+- HAPP-CHAL `challengeId` + `expiresAt` (+ `rpProof` when present),
+- HAPP-CC `jti`, `iat`, `exp` (and `nbf` when present),
+- RP-side replay caches / single-use consumption.
+
+For high-risk actions, RP SHOULD enforce HAPP Challenge Mode and MAY reject agent-initiated requests that lack a challenge.
+
 ## 7. Signing View and presentation_hash (WYSIWYS)
 
 ### 7.1 Signing View
@@ -185,9 +201,14 @@ HAPP-CHAL MUST include:
 - `actionIntent`
 - optional `rpProof` (signature over the challenge body)
 
+RP MUST ensure `challengeId` is unique within RP scope and single-use.
+RP SHOULD use short challenge lifetimes (for example, 300 seconds for high-risk actions).
+
 If rpProof is present:
 - PP MUST verify it prior to issuing HAPP-CC
 - PP SHOULD display “Verified RP” to the user
+
+If PP issues HAPP-CC from HAPP-CHAL input, PP MUST copy `challengeId` into `claims.challengeId`.
 
 ## 11. Consent Credential (HAPP-CC)
 
@@ -201,8 +222,11 @@ HAPP-CC MUST:
   - `assurance` (PoHP)
   - provider certification evidence (embedded or referenced)
 - optionally include:
+  - `nbf`
   - `identityBinding` (if performed)
-  - `challengeId` / challenge reference (if issued from HAPP-CHAL)
+  - challenge reference metadata
+
+When issued from HAPP-CHAL input, HAPP-CC MUST include `challengeId` and it MUST equal the challenge used for the consent event.
 
 Credential formats:
 - `jwt` (JWS)
@@ -213,18 +237,30 @@ Credential formats:
 RP verifying HAPP-CC MUST:
 1. Verify PP signature and trust (keys/registry).
 2. Verify `aud` matches RP.
-3. Verify `exp` and max credential age.
-4. Recompute and match `intent_hash`.
-5. Recompute and match `presentation_hash`.
+3. Validate time claims with bounded clock skew (`maxClockSkewSeconds`, RECOMMENDED <= 300):
+   - reject if `now > exp + skew`
+   - if `nbf` present, reject if `now + skew < nbf`
+   - reject if `iat > now + skew`
+   - enforce max credential age policy relative to `iat`.
+4. Recompute `intent_hash` from the received AI-INTENT using RFC 8785 (JCS) and match exactly.
+5. Recompute `presentation_hash` from Signing View derived from the same AI-INTENT using RFC 8785 (JCS) and match exactly.
 6. Enforce PoHP minimum level.
 7. Verify provider certification supports asserted PoHP level.
-8. Enforce one-time use when required (`jti` replay).
-9. Enforce envelope constraints (executed action within bounds).
-10. If identity binding required:
+8. Enforce one-time use when required (`jti` replay) with atomic consume semantics.
+9. If Challenge Mode is expected by RP policy:
+   - require `claims.challengeId`
+   - verify it matches an outstanding RP challenge for this transaction context
+   - verify the challenge is unexpired and not previously consumed
+   - consume it atomically with action execution.
+10. Enforce envelope constraints (executed action within bounds).
+11. If identity binding required:
     - enforce scheme allow-list
     - enforce subject match (e.g., Entra `tid+oid`)
     - enforce any scheme policies (MFA, auth contexts, allowed tenants)
     - if embedded evidence required, verify it.
+
+RPs MUST reject malformed JSON inputs before canonicalization (including duplicate member names).
+RPs SHOULD retain consumed `jti`/`challengeId` entries at least until `exp + skew`.
 
 ## 13. MCP profile
 
@@ -239,6 +275,7 @@ See `mcp-profile-v0.3.4.md`.
 HAPP mitigates:
 - UI mismatch (presentation_hash)
 - replay (aud binding, TTL, jti)
+- replay amplification via RP challenge binding (`challengeId`) and atomic single-use consumption
 - agent tampering (intent_hash; RP Challenge Mode)
 - spoofing and deepfakes (PoHP levels + certification)
 
