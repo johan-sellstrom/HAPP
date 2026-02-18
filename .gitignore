@@ -39,3 +39,6 @@ htmlcov/
 .env
 .env.*
 *.log
+
+node_modules/
+target/

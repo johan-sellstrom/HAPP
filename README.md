@@ -100,8 +100,22 @@ flowchart LR
 - `test_vectors/`: Sample vectors
 - `implementations/python/`: Python reference implementation
 - `implementations/rust/`: Rust reference workspace
+- `sdks/`: language SDKs (TypeScript, Python, Rust)
 - `interop/`: Conformance harness
 - `formal/`: Lean 4 formal model and proofs
+
+## SDKs
+
+- TypeScript SDK: `sdks/typescript/`
+- Python SDK: `sdks/python/`
+- Rust SDK: `sdks/rust/`
+
+Core SDK surface in each language:
+
+- intent hash computation
+- signing-view derivation
+- presentation hash computation
+- claims-level verification helpers
 
 ## Security Model (Protocol Intent)
 
