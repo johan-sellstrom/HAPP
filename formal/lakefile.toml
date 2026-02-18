@@ -1,0 +1,10 @@
+name = "happ_proof"
+version = "0.1.0"
+defaultTargets = ["happ_proof"]
+
+[[lean_lib]]
+name = "HappProof"
+
+[[lean_exe]]
+name = "happ_proof"
+root = "Main"
