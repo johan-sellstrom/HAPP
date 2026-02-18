@@ -1,127 +1,168 @@
-# AAIF HAPP v0.3.4 (Draft)
+# HAPP: Human Authorization & Presence Protocol
 
-This repository contains the draft AAIF HAPP specification plus reference code for local interoperability testing.
+![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
+![Spec Status: Draft](https://img.shields.io/badge/spec-Draft-orange)
+![Implementation: Reference](https://img.shields.io/badge/implementation-Reference-lightgrey)
+![Formal Model: Lean 4](https://img.shields.io/badge/formal-Lean%204-5C4EE5)
 
-HAPP (Human Authorization and Presence Protocol) standardizes how an agent obtains explicit human approval for a machine-readable action intent and receives a portable consent credential that a relying party can verify.
+HAPP is an open protocol for proving that a human explicitly approved a specific machine-readable action, with replay-resistant verification at the relying party boundary.
 
-## Scope and terminology
+## Quick Start (5 Minutes)
 
-- The credential format in this repo/spec is **HAPP-CC** (HAPP Consent Credential).
-- Some external notes use the term **JWC**; in this repository, the standards term is HAPP-CC.
-- The MCP profile in v0.3.4 currently defines **one** tool: `aaif.happ.request`.
-- This is a **reference** implementation for flow validation and conformance work, not a production service.
-
-## What is included
-
-- Draft spec and schemas for:
-  - Action Intent (AI-INTENT)
-  - Relying Party Challenge (HAPP-CHAL)
-  - Consent Credential (HAPP-CC)
-  - Provider Certification Credential (HAPP-PCC)
-- MCP profile for URL-mode consent flow (`aaif.happ.request`)
-- Python reference implementation (`implementations/python/`) with:
-  - MCP stdio server
-  - Local consent UI (`http://127.0.0.1:8787`)
-  - Optional Entra identity binding (mock mode + real PKCE flow skeleton)
-  - RP-side credential verifier helper
-- Interop harness (`interop/`) that runs the bundled conformance tests
-- Rust reference workspace (`implementations/rust/`)
-
-## Implemented MCP flow (Python reference)
-
-1. MCP host calls `aaif.happ.request` with `actionIntent` (or `challenge`).
-2. Provider returns JSON-RPC error `-32042` with URL elicitation data.
-3. Human opens provider UI, reviews intent, optionally completes identity binding, then approves or denies.
-4. Host retries the same tool call.
-5. Provider returns `structuredContent` with a HAPP-CC envelope.
-
-## Quick start (Python demo)
+Run the Python reference flow:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r implementations/python/requirements.txt
-```
-
-Start MCP server + consent UI:
-
-```bash
 python implementations/python/bin/run_happ_mcp_server.py
 ```
 
-In another terminal, run the local end-to-end tool-call simulation:
+In another terminal:
 
 ```bash
 python implementations/python/examples/demo_mcp_flow.py
 ```
 
-For identity-required flow:
-
-```bash
-python implementations/python/examples/demo_mcp_flow.py --require-identity
-```
-
-## Entra identity binding modes
-
-### 1) Mock mode (default, offline)
-
-- UI shows "Use mock Entra identity (offline)".
-- Generates an RS256-signed Entra-like ID token and embeds evidence in `identityBinding`.
-
-Optional mock subject overrides:
-
-```bash
-export HAPP_ENTRA_MOCK_TID=00000000-0000-0000-0000-000000000000
-export HAPP_ENTRA_MOCK_OID=11111111-1111-1111-1111-111111111111
-```
-
-### 2) Real mode (Authorization Code + PKCE skeleton)
-
-```bash
-export HAPP_ENTRA_MODE=real
-export HAPP_ENTRA_TENANT_ID=common
-export HAPP_ENTRA_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-export HAPP_ENTRA_REDIRECT_URI=http://127.0.0.1:8787/entra/callback
-export HAPP_ENTRA_SCOPE="openid profile email"
-```
-
-In real mode, the UI shows "Sign in with Entra" and performs an OIDC Authorization Code + PKCE redirect flow.
-
-## Conformance harness
-
-Run bundled conformance tests:
+Run conformance checks:
 
 ```bash
 python interop/run_conformance.py
 ```
 
-Run against the reference HTTP provider:
+Run the Lean 4 formal model:
 
 ```bash
-python implementations/python/bin/run_ref_provider_http.py --port 8766
-python interop/run_conformance.py --sut http://127.0.0.1:8766
+cd formal
+lake build
 ```
 
-## Important current limitations
+## Why This Exists
 
-- Provider-issued HAPP-CC in the Python demo uses `HS256` (`HAPP_DEMO_HS256_SECRET`) for simplicity.
-- Intent hashing uses deterministic JSON encoding, not full RFC 8785 JCS.
-- Session state is in-memory only (`implementations/python/happ/session_store.py`).
-- Real Entra callback path does not perform full JWKS signature validation in the UI handler.
-- No production controls for revocation lists, replay caches, key rotation, audit pipeline, PIM policy checks, or Graph notification routing are implemented in this reference demo.
+Autonomous agents can execute real operations, but current API auth often proves only that a caller is authenticated, not that a human approved this exact action now.
 
-## Specification map
+HAPP addresses that gap with portable, verifiable approval evidence bound to:
 
-- Core spec: `specification/draft/happ-v0.3.4.md`
-- RFC-style protocol draft: `specification/draft/happ-rfc-style-v0.3.4.md`
-- MCP profile: `specification/draft/mcp-profile-v0.3.4.md`
-- Conformance: `specification/draft/conformance-v0.3.md`
-- Entra adapter: `specification/draft/adapters/entra-oidc-v0.1.md`
-- AI intent profile note: `specification/draft/ai-intent-profiles/ai-ui-confirm-v1.md`
-- Schemas: `schemas/`
+- the action intent (`intent_hash`)
+- what was shown to the human (`presentation_hash`)
+- audience and freshness controls (`aud`, `jti`, challenge binding)
 
-## Related docs
+## Why This Matters Now
 
-- `docs/one-pager-aaif-steering.md`
-- `docs/agents-md-snippet.md`
-- `docs/enterprise-entra-adapter.md`
+- Agentic systems are moving from read/support actions to high-consequence execution.
+- Traditional auth patterns can be bypassed by long-lived delegation paths and headless execution loops.
+- Governance and regulatory pressure is increasing for accountability, auditability, and high-risk controls.
+
+HAPP is designed as an interoperable layer that complements existing identity and authorization stacks instead of replacing them.
+
+## Architecture At A Glance
+
+```mermaid
+flowchart LR
+    A[Agent requests sensitive action] --> B[RP blocks and returns challenge]
+    B --> C[Agent requests HAPP approval]
+    C --> D[Provider-hosted human liveness and consent UI]
+    D --> E[Provider issues consent credential]
+    E --> F[Agent retries action with credential]
+    F --> G[RP verifies hashes, audience, freshness, replay, challenge]
+    G --> H[RP executes action]
+```
+
+### End-to-End Flow
+
+1. Agent calls RP.
+2. RP blocks and issues a challenge when stronger proof is required.
+3. Agent requests HAPP approval from a provider.
+4. Human completes liveness and explicit approval in provider UI.
+5. Provider returns a signed consent credential.
+6. Agent retries RP call with credential.
+7. RP verifies and atomically consumes replay/challenge state.
+8. RP proceeds.
+
+## Project Status
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Protocol spec | Draft | Versioned in `specification/draft/` |
+| Schemas | Available | Under `schemas/` |
+| Python implementation | Reference | Local flow and conformance harness integration |
+| Rust implementation | Reference | Multi-crate workspace with provider/RP components |
+| Formal verification | In progress | Lean 4 model under `formal/` |
+| Production hardening | Not complete | See scoped limitations below |
+
+## Repository Map
+
+- `specification/draft/happ-v0.3.4.md`: Core protocol draft
+- `specification/draft/happ-rfc-style-v0.3.4.md`: RFC-style rendering
+- `specification/draft/mcp-profile-v0.3.4.md`: MCP profile
+- `specification/draft/conformance-v0.3.md`: Conformance requirements
+- `schemas/`: JSON schemas for protocol objects
+- `test_vectors/`: Sample vectors
+- `implementations/python/`: Python reference implementation
+- `implementations/rust/`: Rust reference workspace
+- `interop/`: Conformance harness
+- `formal/`: Lean 4 formal model and proofs
+
+## Security Model (Protocol Intent)
+
+HAPP is designed to mitigate:
+
+- UI/intent mismatch (WYSIWYS via `presentation_hash`)
+- replay of approval artifacts (`jti`, TTL, challenge single-use)
+- weak linkage between approval and executed action (`intent_hash`)
+
+HAPP does not by itself solve:
+
+- endpoint compromise (agent host or user device)
+- all downstream token replay unless combined with sender-constrained token profiles
+- coercion or out-of-protocol social engineering
+
+## Reference Implementation Limits (Scoped)
+
+This repository includes reference implementations for interoperability, not production deployment.
+
+Current known limits include:
+
+- simplified key and trust handling in demo paths
+- in-memory state for selected flows
+- incomplete production controls for distributed replay/state stores, key lifecycle, and revocation/eventing
+- hardening gaps documented in code and implementation READMEs
+
+## How HAPP Relates To Existing Standards
+
+HAPP is meant to compose with existing standards:
+
+- OAuth 2.x / OIDC: transport and delegation layers
+- MCP: invocation and tool workflow layer
+- WebAuthn/FIDO: strong authentication signals
+- Verifiable credential ecosystems: portable proof packaging options
+
+HAPP specifically focuses on intent-bound human approval and presence evidence at execution boundaries.
+
+## Ecosystem Links
+
+- Model Context Protocol: https://modelcontextprotocol.io/specification
+- OpenID Foundation: https://openid.net/
+- OAuth Working Group: https://datatracker.ietf.org/wg/oauth/about/
+- W3C Verifiable Credentials: https://www.w3.org/TR/vc-data-model/
+- FIDO Alliance / WebAuthn ecosystem: https://fidoalliance.org/
+- NIST AI RMF: https://www.nist.gov/itl/ai-risk-management-framework
+- EU AI Act portal: https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai
+
+## Contributing
+
+Please read:
+
+- `CONTRIBUTING.md`
+- `CODE_OF_CONDUCT.md`
+
+High-value contributions:
+
+- conformance tests and vectors
+- verifier hardening
+- formal proof coverage expansion
+- interoperability reports
+
+## License
+
+Apache-2.0. See `LICENSE`.
