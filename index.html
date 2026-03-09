@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HAPP Protocol</title>
+    <meta
+      name="description"
+      content="Human Authorization and Presence Protocol: intent-bound approval evidence for agentic systems."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">Draft protocol / reference implementation / formal model</p>
+        <h1>Human approval, bound to the exact action.</h1>
+        <p class="lede">
+          HAPP gives relying parties portable evidence that a human explicitly approved
+          a machine-readable action, with freshness, audience, replay, and presentation
+          binding built in.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/advatar/mcm-hap/tree/main/specification/draft">Read the draft</a>
+          <a class="button button-secondary" href="https://github.com/advatar/mcm-hap/tree/main/implementations">Inspect implementations</a>
+        </div>
+      </header>
+
+      <main>
+        <section class="panel panel-grid">
+          <article>
+            <p class="section-kicker">Why</p>
+            <h2>Authentication is not intent proof.</h2>
+            <p>
+              Agentic systems can be authenticated yet still execute the wrong thing.
+              HAPP focuses on the missing control: verifiable proof that a human saw
+              and approved this exact action now.
+            </p>
+          </article>
+          <article>
+            <p class="section-kicker">What gets bound</p>
+            <ul class="signal-list">
+              <li><span>Intent</span><code>intent_hash</code></li>
+              <li><span>What was shown</span><code>presentation_hash</code></li>
+              <li><span>Audience + freshness</span><code>aud</code>, <code>exp</code>, <code>jti</code></li>
+              <li><span>Challenge / replay state</span>single-use verifier controls</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="flow">
+          <div class="section-heading">
+            <p class="section-kicker">Flow</p>
+            <h2>Minimal relying party sequence</h2>
+          </div>
+          <ol class="timeline">
+            <li>RP blocks a sensitive action and returns a challenge.</li>
+            <li>Agent requests approval from a HAPP provider.</li>
+            <li>Human completes presence and consent in provider UI.</li>
+            <li>Provider issues a signed consent credential.</li>
+            <li>RP verifies hashes, audience, freshness, and replay state before execution.</li>
+          </ol>
+        </section>
+
+        <section class="panel cards">
+          <article class="card">
+            <p class="section-kicker">Artifacts</p>
+            <h3>Specification and schemas</h3>
+            <p>Versioned drafts, JSON schemas, and conformance material live in this repository.</p>
+            <a href="https://github.com/advatar/mcm-hap/tree/main/schemas">Open schemas</a>
+          </article>
+          <article class="card">
+            <p class="section-kicker">Reference code</p>
+            <h3>Python, Rust, and SDKs</h3>
+            <p>Reference provider / RP flows plus language SDKs for hashing and verification helpers.</p>
+            <a href="https://github.com/advatar/mcm-hap/tree/main/sdks">Open SDKs</a>
+          </article>
+          <article class="card">
+            <p class="section-kicker">Proof work</p>
+            <h3>Formal model in Lean 4</h3>
+            <p>Protocol properties and end-to-end reasoning are modeled under <code>formal/</code>.</p>
+            <a href="https://github.com/advatar/mcm-hap/tree/main/formal">Open formal model</a>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

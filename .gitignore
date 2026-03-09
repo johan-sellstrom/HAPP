@@ -28,6 +28,7 @@ ENV/
 .coverage
 coverage.xml
 htmlcov/
+interop/results/
 .mypy_cache/
 .ruff_cache/
 .tox/
@@ -42,3 +43,4 @@ htmlcov/
 
 node_modules/
 target/
+.vercel

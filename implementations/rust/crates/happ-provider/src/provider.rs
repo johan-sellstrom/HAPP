@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
+use serde::Serialize;
 use uuid::Uuid;
 
 use happ_core::{
-    intent_hash,
-    presentation_hash,
+    intent_hash, presentation_hash,
     signing_view::SigningView,
     types::{
-        ActionIntent, ConsentCredentialClaims, ConsentCredentialEnvelope, IdentityMode, ProviderCertificationRef,
-        Requirements,
+        ActionIntent, ConsentCredentialClaims, ConsentCredentialEnvelope, IdentityMode,
+        ProviderCertificationRef, Requirements,
     },
     Assurance, HappError, HappResult,
 };
@@ -20,14 +20,14 @@ use crate::adapters::{AdapterRegistry, IdentityAdapterOutcome};
 
 pub type SessionId = String;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum SessionStatus {
     Pending,
     Denied,
     Approved,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Session {
     pub session_id: SessionId,
     pub request_id: String,
@@ -50,7 +50,7 @@ pub struct Session {
     pub oidc: Option<OidcTempState>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct OidcTempState {
     pub scheme: String,
     pub csrf: String,
@@ -167,7 +167,11 @@ impl Provider {
         Ok(())
     }
 
-    pub fn set_identity(&self, session_id: &str, identity: happ_core::types::IdentityBinding) -> HappResult<()> {
+    pub fn set_identity(
+        &self,
+        session_id: &str,
+        identity: happ_core::types::IdentityBinding,
+    ) -> HappResult<()> {
         let mut s = self
             .sessions_by_id
             .get_mut(session_id)
@@ -176,7 +180,7 @@ impl Provider {
         Ok(())
     }
 
-        pub fn set_oidc_state(&self, session_id: &str, state: OidcTempState) -> HappResult<()> {
+    pub fn set_oidc_state(&self, session_id: &str, state: OidcTempState) -> HappResult<()> {
         let mut s = self
             .sessions_by_id
             .get_mut(session_id)
@@ -193,7 +197,7 @@ impl Provider {
         Ok(s.oidc.take())
     }
 
-pub fn approve(&self, session_id: &str) -> HappResult<()> {
+    pub fn approve(&self, session_id: &str) -> HappResult<()> {
         let mut s = self
             .sessions_by_id
             .get_mut(session_id)
@@ -241,7 +245,9 @@ pub fn approve(&self, session_id: &str) -> HappResult<()> {
         let exp = std::cmp::min(max_exp, session.intent.constraints.expires_at).timestamp();
 
         if exp <= iat {
-            return Err(HappError::Expired("intent/credential already expired".to_string()));
+            return Err(HappError::Expired(
+                "intent/credential already expired".to_string(),
+            ));
         }
 
         let verified_at = session.pohp_verified_at.unwrap_or(now);
@@ -282,7 +288,11 @@ pub fn approve(&self, session_id: &str) -> HappResult<()> {
 
     /// Start an identity adapter flow for this session (if any).
     /// Returns an outcome describing what the UI should do next.
-    pub async fn identity_begin(self: &Arc<Self>, session_id: &str, base_url: &str) -> HappResult<Option<IdentityAdapterOutcome>> {
+    pub async fn identity_begin(
+        self: &Arc<Self>,
+        session_id: &str,
+        base_url: &str,
+    ) -> HappResult<Option<IdentityAdapterOutcome>> {
         let session = self
             .sessions_by_id
             .get(session_id)
@@ -306,7 +316,9 @@ pub fn approve(&self, session_id: &str) -> HappResult<()> {
 
         for scheme in schemes {
             if let Some(adapter) = self.adapters.get(&scheme) {
-                let outcome = adapter.begin(self.clone(), &session, &idreq, base_url).await?;
+                let outcome = adapter
+                    .begin(self.clone(), &session, &idreq, base_url)
+                    .await?;
                 return Ok(Some(outcome));
             }
         }

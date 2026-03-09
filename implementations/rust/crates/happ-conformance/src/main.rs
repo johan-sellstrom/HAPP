@@ -1,15 +1,20 @@
-\
 use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Parser;
 
-use happ_core::{hash::intent_hash, hash::presentation_hash, signing_view::SigningView, types::ActionIntent};
+use happ_core::{
+    hash::intent_hash, hash::presentation_hash, signing_view::SigningView, types::ActionIntent,
+};
 use happ_crypto::JwtCodec;
-use happ_rp::{ExpectedIdentity, RpPolicy, RpVerifier};
+use happ_rp::{RpPolicy, RpVerifier};
 
 #[derive(Parser, Debug)]
-#[command(name = "happ-conformance", version, about = "HAPP conformance runner (vectors + checks)")]
+#[command(
+    name = "happ-conformance",
+    version,
+    about = "HAPP conformance runner (vectors + checks)"
+)]
 struct Args {
     /// Path to a vectors directory (e.g., test_vectors/v0.3)
     #[arg(long)]
@@ -27,9 +32,10 @@ fn main() -> anyhow::Result<()> {
     let expected_intent_hash_path = args.vectors.join("expected_intent_hash.txt");
     let expected_presentation_hash_path = args.vectors.join("expected_presentation_hash.txt");
 
-    let intent: ActionIntent =
-        serde_json::from_slice(&std::fs::read(&intent_path).with_context(|| format!("read {intent_path:?}"))?)
-            .context("parse action intent")?;
+    let intent: ActionIntent = serde_json::from_slice(
+        &std::fs::read(&intent_path).with_context(|| format!("read {intent_path:?}"))?,
+    )
+    .context("parse action intent")?;
 
     let ih = intent_hash(&intent);
     let ph = presentation_hash(&SigningView::from_intent(&intent));
@@ -81,7 +87,9 @@ fn main() -> anyhow::Result<()> {
             passfail(res.is_ok())
         ));
     } else {
-        md.push_str("- **RP-VER-01** RP verifies sample consent credential: (skipped — no JWT vector)\n");
+        md.push_str(
+            "- **RP-VER-01** RP verifies sample consent credential: (skipped — no JWT vector)\n",
+        );
     }
 
     std::fs::write(&args.out, md).with_context(|| format!("write {out:?}", out = args.out))?;
@@ -90,5 +98,9 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn passfail(ok: bool) -> &'static str {
-    if ok { "PASS" } else { "FAIL" }
+    if ok {
+        "PASS"
+    } else {
+        "FAIL"
+    }
 }

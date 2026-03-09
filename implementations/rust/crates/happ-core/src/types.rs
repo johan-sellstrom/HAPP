@@ -131,7 +131,10 @@ pub struct Requirements {
 pub struct PoHpRequirements {
     #[serde(rename = "minLevel")]
     pub min_level: PoHpLevel,
-    #[serde(rename = "maxCredentialAgeSeconds", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "maxCredentialAgeSeconds",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub max_credential_age_seconds: Option<u64>,
 }
 

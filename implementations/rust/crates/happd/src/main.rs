@@ -1,4 +1,3 @@
-\
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -7,11 +6,19 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use happ_crypto::{JwtCodec, JwtSigningAlg};
-use happ_provider::adapters::{AdapterRegistry, entra_mock::EntraMockAdapter, entra_oidc_pkce::{EntraOidcConfig, EntraOidcPkceAdapter}};
+use happ_provider::adapters::{
+    entra_mock::EntraMockAdapter,
+    entra_oidc_pkce::{EntraOidcConfig, EntraOidcPkceAdapter},
+    AdapterRegistry,
+};
 use happ_provider::{Provider, ProviderConfig};
 
 #[derive(Parser, Debug)]
-#[command(name = "happd", version, about = "HAPP reference provider (MCP stdio + URL UI)")]
+#[command(
+    name = "happd",
+    version,
+    about = "HAPP reference provider (MCP stdio + URL UI)"
+)]
 struct Args {
     /// Web UI bind address, e.g. 127.0.0.1:8787
     #[arg(long, default_value = "127.0.0.1:8787")]
@@ -75,7 +82,9 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    let web_base_url = args.web_base_url.unwrap_or_else(|| format!("http://{}", args.web_addr));
+    let web_base_url = args
+        .web_base_url
+        .unwrap_or_else(|| format!("http://{}", args.web_addr));
 
     // Signing setup
     let signing_alg = match args.signing_alg.as_str() {
@@ -90,9 +99,13 @@ async fn main() -> anyhow::Result<()> {
                 .signing_key
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("examples/keys/provider_rsa_private.pem"));
-            let pub_path = args.public_key.clone().unwrap_or_else(|| PathBuf::from("examples/keys/provider_rsa_public.pem"));
+            let pub_path = args
+                .public_key
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("examples/keys/provider_rsa_public.pem"));
 
-            let priv_pem = std::fs::read(&priv_path).with_context(|| format!("read {priv_path:?}"))?;
+            let priv_pem =
+                std::fs::read(&priv_path).with_context(|| format!("read {priv_path:?}"))?;
             let pub_pem = std::fs::read(&pub_path).with_context(|| format!("read {pub_path:?}"))?;
             JwtCodec::from_rs256_pem(&priv_pem, &pub_pem).context("init RS256 codec")?
         }
@@ -136,7 +149,9 @@ async fn main() -> anyhow::Result<()> {
             // Overwrite the mock adapter for scheme `entra_oidc`.
             reg.register(std::sync::Arc::new(EntraOidcPkceAdapter::new(entra_cfg)));
         } else {
-            tracing::warn!("entra_oidc requested but --entra-client-id not provided; using mock adapter");
+            tracing::warn!(
+                "entra_oidc requested but --entra-client-id not provided; using mock adapter"
+            );
         }
     }
 

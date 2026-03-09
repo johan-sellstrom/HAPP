@@ -1,4 +1,3 @@
-\
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -24,7 +23,11 @@ pub struct WebState {
     pub base_url: String,
 }
 
-pub async fn run_web_server(provider: Arc<Provider>, addr: SocketAddr, base_url: String) -> anyhow::Result<()> {
+pub async fn run_web_server(
+    provider: Arc<Provider>,
+    addr: SocketAddr,
+    base_url: String,
+) -> anyhow::Result<()> {
     let state = WebState { provider, base_url };
 
     let app = Router::new()
@@ -32,8 +35,14 @@ pub async fn run_web_server(provider: Arc<Provider>, addr: SocketAddr, base_url:
         .route("/session/:sid", get(session_page))
         .route("/session/:sid/pohp/mock", post(pohp_mock))
         .route("/session/:sid/identity/begin", get(identity_begin))
-        .route("/session/:sid/identity/entra_oidc/mock_complete", get(identity_entra_oidc_mock_complete))
-        .route("/identity/entra_oidc/callback", get(identity_entra_oidc_callback))
+        .route(
+            "/session/:sid/identity/entra_oidc/mock_complete",
+            get(identity_entra_oidc_mock_complete),
+        )
+        .route(
+            "/identity/entra_oidc/callback",
+            get(identity_entra_oidc_callback),
+        )
         .route("/session/:sid/approve", post(approve))
         .route("/session/:sid/deny", post(deny))
         .route("/api/session/:sid", get(api_session))
@@ -50,7 +59,9 @@ async fn index(State(st): State<WebState>) -> impl IntoResponse {
     let mut body = String::new();
     body.push_str("<html><body>");
     body.push_str("<h1>HAPP Provider (Reference)</h1>");
-    body.push_str("<p>This UI is provider-controlled. It shows the Signing View and collects consent.</p>");
+    body.push_str(
+        "<p>This UI is provider-controlled. It shows the Signing View and collects consent.</p>",
+    );
     body.push_str("<h2>Sessions</h2><ul>");
     for s in sessions {
         body.push_str(&format!(
@@ -66,7 +77,9 @@ async fn index(State(st): State<WebState>) -> impl IntoResponse {
 
 async fn session_page(Path(sid): Path<String>, State(st): State<WebState>) -> impl IntoResponse {
     let session = match st.provider.get_session(&sid) {
-        None => return (StatusCode::NOT_FOUND, Html("session not found".to_string())).into_response(),
+        None => {
+            return (StatusCode::NOT_FOUND, Html("session not found".to_string())).into_response()
+        }
         Some(s) => s,
     };
 
@@ -86,10 +99,16 @@ async fn session_page(Path(sid): Path<String>, State(st): State<WebState>) -> im
     if let Some(req) = idreq {
         body.push_str("<h2>Identity Binding</h2>");
         body.push_str(&format!("<p>mode: <b>{:?}</b></p>", req.mode));
-        body.push_str(&format!("<p>schemes: <code>{}</code></p>", req.schemes.join(", ")));
+        body.push_str(&format!(
+            "<p>schemes: <code>{}</code></p>",
+            req.schemes.join(", ")
+        ));
         if let Some(id) = &session.identity {
             body.push_str("<p>Identity: ✅ completed</p>");
-            body.push_str(&format!("<pre>{}</pre>", html_escape(&serde_json::to_string_pretty(id).unwrap())));
+            body.push_str(&format!(
+                "<pre>{}</pre>",
+                html_escape(&serde_json::to_string_pretty(id).unwrap())
+            ));
         } else {
             body.push_str("<p>Identity: ❌ not completed</p>");
             if !matches!(req.mode, IdentityMode::None) {
@@ -132,7 +151,7 @@ async fn session_page(Path(sid): Path<String>, State(st): State<WebState>) -> im
 
     body.push_str("<p><a href=\"/\">Back</a></p>");
     body.push_str("</body></html>");
-    Html(body)
+    Html(body).into_response()
 }
 
 async fn pohp_mock(Path(sid): Path<String>, State(st): State<WebState>) -> impl IntoResponse {
@@ -145,7 +164,7 @@ async fn pohp_mock(Path(sid): Path<String>, State(st): State<WebState>) -> impl 
 async fn approve(Path(sid): Path<String>, State(st): State<WebState>) -> impl IntoResponse {
     let res = st.provider.approve(&sid);
     match res {
-        Ok(_) => Redirect::to(&format!("/session/{sid}")),
+        Ok(_) => Redirect::to(&format!("/session/{sid}")).into_response(),
         Err(e) => {
             let body = format!(
                 "<html><body><p>Approve failed: {}</p><p><a href=\"/session/{sid}\">Back</a></p></body></html>",
@@ -166,7 +185,9 @@ async fn identity_begin(Path(sid): Path<String>, State(st): State<WebState>) -> 
         Ok(Some(outcome)) => match outcome {
             IdentityAdapterOutcome::Redirect { url } => Redirect::to(&url).into_response(),
             IdentityAdapterOutcome::LocalAction { url, .. } => Redirect::to(&url).into_response(),
-            IdentityAdapterOutcome::Completed => Redirect::to(&format!("/session/{sid}")).into_response(),
+            IdentityAdapterOutcome::Completed => {
+                Redirect::to(&format!("/session/{sid}")).into_response()
+            }
         },
         Ok(None) => Redirect::to(&format!("/session/{sid}")).into_response(),
         Err(e) => {

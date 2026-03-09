@@ -7,9 +7,10 @@ use serde_json::json;
 
 use happ_core::{
     types::{
-        IdentityAssurance, IdentityBinding, IdentityEvidence, IdentityIdp, IdentityRequirements, IdentitySubject,
+        IdentityAssurance, IdentityBinding, IdentityEvidence, IdentityIdp, IdentityRequirements,
+        IdentitySubject,
     },
-    HappError, HappResult,
+    HappResult,
 };
 
 use crate::adapters::{IdentityAdapter, IdentityAdapterOutcome};

@@ -1,12 +1,17 @@
-\
 use chrono::Utc;
 use serde_json::Value;
 use thiserror::Error;
 
-use happ_core::{hash::intent_hash, hash::presentation_hash, signing_view::SigningView, types::ConsentCredentialClaims, HappError, PoHpLevel};
+use happ_core::{
+    hash::intent_hash, hash::presentation_hash, signing_view::SigningView,
+    types::ConsentCredentialClaims,
+};
 use happ_crypto::JwtCodec;
 
-use crate::{policy::{ExpectedIdentity, RpPolicy}, replay::ReplayCache};
+use crate::{
+    policy::{ExpectedIdentity, RpPolicy},
+    replay::ReplayCache,
+};
 
 #[derive(Debug, Error)]
 pub enum VerifyError {
@@ -61,7 +66,9 @@ impl RpVerifier {
             return Err(VerifyError::Policy("credential expired".to_string()));
         }
         if claims.iat > now + 60 {
-            return Err(VerifyError::Policy("credential iat in the future".to_string()));
+            return Err(VerifyError::Policy(
+                "credential iat in the future".to_string(),
+            ));
         }
 
         // audience binding
@@ -82,7 +89,9 @@ impl RpVerifier {
         let view = SigningView::from_intent(intent);
         let ph = presentation_hash(&view);
         if claims.presentation_hash != ph {
-            return Err(VerifyError::Binding("presentation_hash mismatch".to_string()));
+            return Err(VerifyError::Binding(
+                "presentation_hash mismatch".to_string(),
+            ));
         }
 
         // PoHP level
@@ -113,10 +122,9 @@ impl RpVerifier {
                 }
             }
             happ_core::types::IdentityMode::Required => {
-                let id = claims
-                    .identity_binding
-                    .as_ref()
-                    .ok_or_else(|| VerifyError::Policy("identity required but missing".to_string()))?;
+                let id = claims.identity_binding.as_ref().ok_or_else(|| {
+                    VerifyError::Policy("identity required but missing".to_string())
+                })?;
                 self.verify_identity(id, policy, expected_identity)?;
             }
         }
@@ -131,9 +139,14 @@ impl RpVerifier {
         expected_identity: Option<&ExpectedIdentity>,
     ) -> Result<(), VerifyError> {
         if !policy.allowed_identity_schemes.is_empty()
-            && !policy.allowed_identity_schemes.iter().any(|s| s == &id.scheme)
+            && !policy
+                .allowed_identity_schemes
+                .iter()
+                .any(|s| s == &id.scheme)
         {
-            return Err(VerifyError::Policy("identity scheme not allowed".to_string()));
+            return Err(VerifyError::Policy(
+                "identity scheme not allowed".to_string(),
+            ));
         }
 
         if policy.require_embedded_identity_evidence && !id.evidence.embedded {
@@ -166,16 +179,13 @@ impl RpVerifier {
 
         // If evidence is embedded, self-verify the id_token signature using jwks.
         if id.evidence.embedded {
-            let token = id
-                .evidence
-                .token
-                .as_ref()
-                .ok_or_else(|| VerifyError::Policy("embedded=true but token missing".to_string()))?;
-            let jwks = id
-                .evidence
-                .jwks
-                .as_ref()
-                .ok_or_else(|| VerifyError::Policy("embedded=true but jwks missing".to_string()))?;
+            let token = id.evidence.token.as_ref().ok_or_else(|| {
+                VerifyError::Policy("embedded=true but token missing".to_string())
+            })?;
+            let jwks =
+                id.evidence.jwks.as_ref().ok_or_else(|| {
+                    VerifyError::Policy("embedded=true but jwks missing".to_string())
+                })?;
             verify_embedded_oidc_token(token, jwks).map_err(|e| VerifyError::Policy(e))?;
         }
 
@@ -184,13 +194,15 @@ impl RpVerifier {
 }
 
 fn verify_embedded_oidc_token(token: &str, jwks: &Value) -> Result<(), String> {
-    use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
     use jsonwebtoken::jwk::{Jwk, JwkSet};
+    use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 
     let header = decode_header(token).map_err(|e| e.to_string())?;
     let kid = header.kid.ok_or_else(|| "missing kid".to_string())?;
     let jwk_set: JwkSet = serde_json::from_value(jwks.clone()).map_err(|e| e.to_string())?;
-    let jwk: &Jwk = jwk_set.find(&kid).ok_or_else(|| "kid not found in jwks".to_string())?;
+    let jwk: &Jwk = jwk_set
+        .find(&kid)
+        .ok_or_else(|| "kid not found in jwks".to_string())?;
     let key = DecodingKey::from_jwk(jwk).map_err(|e| e.to_string())?;
 
     let mut validation = Validation::new(Algorithm::RS256);

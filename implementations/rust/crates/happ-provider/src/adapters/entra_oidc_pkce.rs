@@ -1,18 +1,17 @@
-\
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use rand::{distributions::Alphanumeric, Rng};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::Deserialize;
+use serde_json::Value;
 use url::Url;
 
 use happ_core::{
     types::{
-        IdentityAssurance, IdentityBinding, IdentityEvidence, IdentityIdp, IdentityPolicy, IdentityRequirements,
-        IdentitySubject,
+        IdentityAssurance, IdentityBinding, IdentityEvidence, IdentityIdp, IdentityPolicy,
+        IdentityRequirements, IdentitySubject,
     },
     HappError, HappResult,
 };
@@ -32,10 +31,7 @@ pub struct EntraOidcConfig {
 
 impl EntraOidcConfig {
     pub fn issuer(&self) -> String {
-        format!(
-            "https://login.microsoftonline.com/{}/v2.0",
-            self.tenant
-        )
+        format!("https://login.microsoftonline.com/{}/v2.0", self.tenant)
     }
 
     pub fn authorize_endpoint(&self) -> String {
@@ -60,7 +56,10 @@ impl EntraOidcConfig {
     }
 
     pub fn redirect_uri(&self) -> String {
-        format!("{}/identity/entra_oidc/callback", self.redirect_base.trim_end_matches('/'))
+        format!(
+            "{}/identity/entra_oidc/callback",
+            self.redirect_base.trim_end_matches('/')
+        )
     }
 }
 
@@ -133,12 +132,17 @@ impl EntraOidcPkceAdapter {
 
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
-    access_token: Option<String>,
+    #[serde(rename = "access_token")]
+    _access_token: Option<String>,
     id_token: Option<String>,
-    refresh_token: Option<String>,
-    expires_in: Option<i64>,
-    scope: Option<String>,
-    token_type: Option<String>,
+    #[serde(rename = "refresh_token")]
+    _refresh_token: Option<String>,
+    #[serde(rename = "expires_in")]
+    _expires_in: Option<i64>,
+    #[serde(rename = "scope")]
+    _scope: Option<String>,
+    #[serde(rename = "token_type")]
+    _token_type: Option<String>,
 }
 
 #[async_trait]
@@ -151,8 +155,8 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         &self,
         provider: Arc<Provider>,
         session: &Session,
-        req: &IdentityRequirements,
-        base_url: &str,
+        _req: &IdentityRequirements,
+        _base_url: &str,
     ) -> HappResult<IdentityAdapterOutcome> {
         let csrf = Self::random_string(32);
         let nonce = Self::random_string(32);
@@ -191,7 +195,9 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         // via claims challenge or other supported mechanisms. This reference keeps it minimal.
         // The RP expresses policy in req.policy.required_auth_contexts.
 
-        Ok(IdentityAdapterOutcome::Redirect { url: url.to_string() })
+        Ok(IdentityAdapterOutcome::Redirect {
+            url: url.to_string(),
+        })
     }
 
     async fn handle_callback(
@@ -199,7 +205,7 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         provider: Arc<Provider>,
         _session_id: &str,
         query: &HashMap<String, String>,
-        base_url: &str,
+        _base_url: &str,
     ) -> HappResult<IdentityAdapterOutcome> {
         let code = query
             .get("code")
@@ -251,7 +257,6 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
             .post(self.cfg.token_endpoint())
             .form(&form)
             .send()
-
             .await
             .map_err(|e| HappError::Io(e.to_string()))?
             .json::<TokenResponse>()
@@ -269,12 +274,24 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
             _ => Some(self.cfg.issuer()),
         };
 
-        let verified = verify_entra_id_token(&id_token, &jwks, expected_iss.as_deref(), &self.cfg.client_id, &oidc.nonce)
-            .map_err(|e| HappError::Unauthorized(e))?;
+        let verified = verify_entra_id_token(
+            &id_token,
+            &jwks,
+            expected_iss.as_deref(),
+            &self.cfg.client_id,
+            &oidc.nonce,
+        )
+        .map_err(|e| HappError::Unauthorized(e))?;
 
         // Extract tid+oid
-        let tid = verified.tid.clone().ok_or_else(|| HappError::Invalid("missing tid".to_string()))?;
-        let oid = verified.oid.clone().ok_or_else(|| HappError::Invalid("missing oid".to_string()))?;
+        let tid = verified
+            .tid
+            .clone()
+            .ok_or_else(|| HappError::Invalid("missing tid".to_string()))?;
+        let oid = verified
+            .oid
+            .clone()
+            .ok_or_else(|| HappError::Invalid("missing oid".to_string()))?;
 
         if !policy.allowed_tenants.is_empty() && !policy.allowed_tenants.contains(&tid) {
             return Err(HappError::Unauthorized("tenant not allowed".to_string()));
@@ -283,7 +300,9 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         if policy.require_mfa {
             let amr = verified.amr.clone().unwrap_or_default();
             if !amr.iter().any(|x| x == "mfa") {
-                return Err(HappError::Unauthorized("MFA required but not present".to_string()));
+                return Err(HappError::Unauthorized(
+                    "MFA required but not present".to_string(),
+                ));
             }
         }
 
@@ -310,15 +329,28 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         let embedded = policy.require_embedded_evidence;
         let evidence = IdentityEvidence {
             kind: "oidc_id_token".to_string(),
-            token_hash: Some(format!("sha256:{}", sha256_base64url_nopad(id_token.as_bytes()))),
-            nonce_hash: Some(format!("sha256:{}", sha256_base64url_nopad(oidc.nonce.as_bytes()))),
+            token_hash: Some(format!(
+                "sha256:{}",
+                sha256_base64url_nopad(id_token.as_bytes())
+            )),
+            nonce_hash: Some(format!(
+                "sha256:{}",
+                sha256_base64url_nopad(oidc.nonce.as_bytes())
+            )),
             embedded,
-            token: if embedded { Some(id_token.clone()) } else { None },
+            token: if embedded {
+                Some(id_token.clone())
+            } else {
+                None
+            },
             jwks: if embedded { Some(jwks.clone()) } else { None },
         };
 
         let assurance = IdentityAssurance {
-            auth_time: verified.auth_time.map(|t| Utc.timestamp_opt(t, 0).single()).flatten(),
+            auth_time: verified
+                .auth_time
+                .map(|t| Utc.timestamp_opt(t, 0).single())
+                .flatten(),
             amr: verified.amr.unwrap_or_default(),
             acrs: verified.acrs.unwrap_or_default(),
         };
@@ -344,7 +376,6 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         provider.set_identity(&sid, binding)?;
 
         // Redirect back to the session page.
-        let _return_url = format!("{}/session/{}", base_url.trim_end_matches('/'), sid);
         Ok(IdentityAdapterOutcome::Completed)
     }
 }
@@ -369,14 +400,16 @@ fn verify_entra_id_token(
     expected_aud: &str,
     expected_nonce: &str,
 ) -> Result<VerifiedEntraToken, String> {
-    use jsonwebtoken::{decode_header, Algorithm, DecodingKey, Validation, decode};
-    use jsonwebtoken::jwk::{JwkSet, Jwk};
+    use jsonwebtoken::jwk::{Jwk, JwkSet};
+    use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 
     let header = decode_header(token).map_err(|e| e.to_string())?;
     let kid = header.kid.ok_or_else(|| "missing kid".to_string())?;
 
     let jwk_set: JwkSet = serde_json::from_value(jwks.clone()).map_err(|e| e.to_string())?;
-    let jwk: &Jwk = jwk_set.find(&kid).ok_or_else(|| "kid not found in jwks".to_string())?;
+    let jwk: &Jwk = jwk_set
+        .find(&kid)
+        .ok_or_else(|| "kid not found in jwks".to_string())?;
 
     let decoding_key = DecodingKey::from_jwk(jwk).map_err(|e| e.to_string())?;
 
@@ -387,24 +420,41 @@ fn verify_entra_id_token(
     }
     validation.validate_exp = true;
 
-    let td = decode::<serde_json::Value>(token, &decoding_key, &validation).map_err(|e| e.to_string())?;
+    let td = decode::<serde_json::Value>(token, &decoding_key, &validation)
+        .map_err(|e| e.to_string())?;
     let claims = td.claims;
 
     // nonce binding
-    let nonce = claims.get("nonce").and_then(|v| v.as_str()).ok_or_else(|| "missing nonce".to_string())?;
+    let nonce = claims
+        .get("nonce")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "missing nonce".to_string())?;
     if nonce != expected_nonce {
         return Err("nonce mismatch".to_string());
     }
 
     Ok(VerifiedEntraToken {
-        sub: claims.get("sub").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        tid: claims.get("tid").and_then(|v| v.as_str()).map(|s| s.to_string()),
-        oid: claims.get("oid").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        sub: claims
+            .get("sub")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        tid: claims
+            .get("tid")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        oid: claims
+            .get("oid")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         amr: claims.get("amr").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+            arr.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
         }),
         acrs: claims.get("acrs").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect()
+            arr.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
         }),
         auth_time: claims.get("auth_time").and_then(|v| v.as_i64()),
     })

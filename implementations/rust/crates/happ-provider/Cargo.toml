@@ -30,6 +30,7 @@ url = "2"
 # Entra OIDC adapter skeleton dependencies
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 openidconnect = { version = "3", default-features = false, features = ["reqwest", "rustls-tls"] }
+jsonwebtoken = "9"
 
 async-trait = "0.1"
 

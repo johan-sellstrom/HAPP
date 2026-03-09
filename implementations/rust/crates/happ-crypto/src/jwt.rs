@@ -1,4 +1,6 @@
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
+use jsonwebtoken::{
+    decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
@@ -81,7 +83,11 @@ impl JwtCodec {
         Ok(encode(&header, claims, enc)?)
     }
 
-    pub fn decode<T: DeserializeOwned>(&self, token: &str, audience: Option<&str>) -> Result<VerifiedJwt<T>, JwtError> {
+    pub fn decode<T: DeserializeOwned>(
+        &self,
+        token: &str,
+        audience: Option<&str>,
+    ) -> Result<VerifiedJwt<T>, JwtError> {
         let mut validation = Validation::new(self.alg.to_alg());
         validation.validate_exp = false; // RP verifier enforces exp/iat policy explicitly
         if let Some(aud) = audience {

@@ -1,4 +1,3 @@
-\
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
@@ -140,7 +139,11 @@ struct ToolError {
     data: Value,
 }
 
-fn handle_happ_request(provider: Arc<Provider>, web_base_url: &str, params: &Value) -> Result<Value, ToolError> {
+fn handle_happ_request(
+    provider: Arc<Provider>,
+    web_base_url: &str,
+    params: &Value,
+) -> Result<Value, ToolError> {
     let args = params.get("arguments").cloned().unwrap_or(Value::Null);
 
     let request_id = args
@@ -153,16 +156,19 @@ fn handle_happ_request(provider: Arc<Provider>, web_base_url: &str, params: &Val
         })?
         .to_string();
 
-    \
     // Accept either explicit actionIntent+requirements OR a single `challenge` object.
-    let mut challenge_id: Option<String> = args.get("challengeId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let mut challenge_id: Option<String> = args
+        .get("challengeId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let (action_intent, requirements) = if let Some(ch) = args.get("challenge") {
-        let challenge: happ_core::types::HappChallenge = serde_json::from_value(ch.clone()).map_err(|e| ToolError {
-            code: -32602,
-            message: format!("Invalid challenge: {e}"),
-            data: json!({}),
-        })?;
+        let challenge: happ_core::types::HappChallenge = serde_json::from_value(ch.clone())
+            .map_err(|e| ToolError {
+                code: -32602,
+                message: format!("Invalid challenge: {e}"),
+                data: json!({}),
+            })?;
 
         // Basic expiry validation (challenge mode)
         let now = chrono::Utc::now();
@@ -180,35 +186,29 @@ fn handle_happ_request(provider: Arc<Provider>, web_base_url: &str, params: &Val
 
         (challenge.action_intent, challenge.requirements)
     } else {
-        let action_intent: ActionIntent = serde_json::from_value(
-            args.get("actionIntent")
-                .cloned()
-                .ok_or_else(|| ToolError {
-                    code: -32602,
-                    message: "Missing actionIntent".to_string(),
-                    data: json!({}),
-                })?,
-        )
-        .map_err(|e| ToolError {
-            code: -32602,
-            message: format!("Invalid actionIntent: {e}"),
-            data: json!({}),
-        })?;
+        let action_intent: ActionIntent =
+            serde_json::from_value(args.get("actionIntent").cloned().ok_or_else(|| ToolError {
+                code: -32602,
+                message: "Missing actionIntent".to_string(),
+                data: json!({}),
+            })?)
+            .map_err(|e| ToolError {
+                code: -32602,
+                message: format!("Invalid actionIntent: {e}"),
+                data: json!({}),
+            })?;
 
-        let requirements: Requirements = serde_json::from_value(
-            args.get("requirements")
-                .cloned()
-                .ok_or_else(|| ToolError {
-                    code: -32602,
-                    message: "Missing requirements".to_string(),
-                    data: json!({}),
-                })?,
-        )
-        .map_err(|e| ToolError {
-            code: -32602,
-            message: format!("Invalid requirements: {e}"),
-            data: json!({}),
-        })?;
+        let requirements: Requirements =
+            serde_json::from_value(args.get("requirements").cloned().ok_or_else(|| ToolError {
+                code: -32602,
+                message: "Missing requirements".to_string(),
+                data: json!({}),
+            })?)
+            .map_err(|e| ToolError {
+                code: -32602,
+                message: format!("Invalid requirements: {e}"),
+                data: json!({}),
+            })?;
 
         (action_intent, requirements)
     };
@@ -252,11 +252,7 @@ fn handle_happ_request(provider: Arc<Provider>, web_base_url: &str, params: &Val
             data: json!({ "sessionId": sid }),
         }),
         crate::provider::SessionStatus::Pending => {
-            let url = format!(
-                "{}/session/{}",
-                web_base_url.trim_end_matches('/'),
-                sid
-            );
+            let url = format!("{}/session/{}", web_base_url.trim_end_matches('/'), sid);
             Err(ToolError {
                 code: URL_ELICITATION_REQUIRED,
                 message: "User interaction required.".to_string(),
