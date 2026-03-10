@@ -17,5 +17,5 @@ use happ_sdk::{compute_intent_hash, derive_signing_view, compute_presentation_ha
 
 ## Notes
 
-- Deterministic JSON canonicalization is used in this SDK for compatibility with this repository.
-- Strict production deployments should use RFC 8785 JCS canonicalization.
+- Hashes in this SDK now use RFC 8785 JCS canonicalization.
+- Hash stability is tested directly against canonicalization behavior instead of relying only on verifier tests.

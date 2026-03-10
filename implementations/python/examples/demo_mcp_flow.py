@@ -54,10 +54,11 @@ def main() -> None:
         print()
 
         if args.auto_approve:
-            # auto approve (and auto mock identity if required)
+            # auto-complete the same checks the UI now requires
             sess = STORE.get(eid)
+            if sess:
+                STORE.mark_pohp_verified(eid, level=requirements["pohp"]["minLevel"], method="demo-auto")
             if sess and args.require_identity:
-                # simulate clicking mock identity + approve
                 from happ.adapters.entra_mock import default_mock_issuer
                 from happ.util import sha256_b64url, now_utc
                 tenant_id = "00000000-0000-0000-0000-000000000000"
@@ -67,7 +68,7 @@ def main() -> None:
                 nonce = sess.nonce or "nonce"
                 id_token = issuer.issue_id_token(tenant_id=tenant_id, oid=oid, nonce=nonce, amr=["pwd","mfa"], acrs=["c1"])
                 jwks = issuer.jwks()
-                sess.identity_binding = {
+                STORE.update(eid, identity_binding={
                     "mode":"verified",
                     "scheme":"entra_oidc",
                     "idp":{"issuer":issuer.issuer,"tenantId":tenant_id},
@@ -76,7 +77,7 @@ def main() -> None:
                     "evidence":{"kind":"oidc_id_token","embedded":True,"id_token":id_token,"jwks":jwks,
                                "tokenHash":"sha256:"+sha256_b64url(id_token.encode("utf-8")),
                                "nonceHash":"sha256:"+sha256_b64url(nonce.encode("utf-8"))}
-                }
+                })
             STORE.update(eid, approved=True, denied=False)
         else:
             input("Press Enter after approval...")

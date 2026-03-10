@@ -4,15 +4,17 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 
-use happ_core::{hash::intent_hash, signing_view::SigningView, types::IdentityMode};
+use happ_core::{hash::intent_hash, level::PoHpLevel, signing_view::SigningView, types::IdentityMode};
 
 use crate::adapters::IdentityAdapterOutcome;
 use crate::provider::{Provider, SessionStatus};
@@ -21,19 +23,32 @@ use crate::provider::{Provider, SessionStatus};
 pub struct WebState {
     pub provider: Arc<Provider>,
     pub base_url: String,
+    pub allow_mock_pohp: bool,
+    pub allow_mock_identity: bool,
+    pub pohp_attestation_secret: Option<String>,
 }
 
 pub async fn run_web_server(
     provider: Arc<Provider>,
     addr: SocketAddr,
     base_url: String,
+    allow_mock_pohp: bool,
+    allow_mock_identity: bool,
+    pohp_attestation_secret: Option<String>,
 ) -> anyhow::Result<()> {
-    let state = WebState { provider, base_url };
+    let state = WebState {
+        provider,
+        base_url,
+        allow_mock_pohp,
+        allow_mock_identity,
+        pohp_attestation_secret,
+    };
 
     let app = Router::new()
         .route("/", get(index))
         .route("/session/:sid", get(session_page))
         .route("/session/:sid/pohp/mock", post(pohp_mock))
+        .route("/api/session/:sid/pohp/attest", post(pohp_attest))
         .route("/session/:sid/identity/begin", get(identity_begin))
         .route(
             "/session/:sid/identity/entra_oidc/mock_complete",
@@ -46,8 +61,13 @@ pub async fn run_web_server(
         .route("/session/:sid/approve", post(approve))
         .route("/session/:sid/deny", post(deny))
         .route("/api/session/:sid", get(api_session))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+
+    let app = if state.allow_mock_pohp || state.allow_mock_identity {
+        app.layer(CorsLayer::permissive())
+    } else {
+        app
+    };
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
@@ -123,12 +143,17 @@ async fn session_page(Path(sid): Path<String>, State(st): State<WebState>) -> im
     // PoHP status
     body.push_str("<h2>Proof of Human Presence</h2>");
     if session.pohp_verified_at.is_some() {
-        body.push_str("<p>Presence: ✅ verified (mock)</p>");
-    } else {
+        body.push_str(&format!(
+            "<p>Presence: ✅ verified via <code>{}</code></p>",
+            session.pohp_method.as_deref().unwrap_or("unknown")
+        ));
+    } else if st.allow_mock_pohp {
         body.push_str(&format!(
             "<form method=\"post\" action=\"/session/{}/pohp/mock\"><button type=\"submit\">Complete mock liveness</button></form>",
             sid
         ));
+    } else {
+        body.push_str("<p>Presence: pending. Complete PoHP through your external attestation service and POST to <code>/api/session/&lt;sessionId&gt;/pohp/attest</code>.</p>");
     }
 
     // signing view
@@ -155,9 +180,65 @@ async fn session_page(Path(sid): Path<String>, State(st): State<WebState>) -> im
 }
 
 async fn pohp_mock(Path(sid): Path<String>, State(st): State<WebState>) -> impl IntoResponse {
-    match st.provider.mark_pohp_verified(&sid) {
-        Ok(_) => Redirect::to(&format!("/session/{sid}")),
-        Err(_) => Redirect::to("/"),
+    if !st.allow_mock_pohp {
+        return (StatusCode::FORBIDDEN, Html("mock PoHP disabled".to_string())).into_response();
+    }
+
+    let session = match st.provider.get_session(&sid) {
+        Some(session) => session,
+        None => return Redirect::to("/").into_response(),
+    };
+
+    match st
+        .provider
+        .mark_pohp_verified(&sid, "mock-ui", session.requirements.pohp.min_level, None)
+    {
+        Ok(_) => Redirect::to(&format!("/session/{sid}")).into_response(),
+        Err(_) => Redirect::to("/").into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct PohpAttestationRequest {
+    method: String,
+    level: PoHpLevel,
+    verified_at: Option<DateTime<Utc>>,
+}
+
+async fn pohp_attest(
+    Path(sid): Path<String>,
+    State(st): State<WebState>,
+    headers: HeaderMap,
+    Json(req): Json<PohpAttestationRequest>,
+) -> impl IntoResponse {
+    let Some(expected_secret) = st.pohp_attestation_secret.as_deref() else {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "attestation_not_enabled"})));
+    };
+
+    if !authorize_attestation(&headers, expected_secret) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "unauthorized"})));
+    }
+
+    let method = req.method.trim();
+    if method.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "missing_method"})));
+    }
+    if method.starts_with("mock") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "mock_method_not_allowed"})),
+        );
+    }
+
+    match st
+        .provider
+        .mark_pohp_verified(&sid, method.to_string(), req.level, req.verified_at)
+    {
+        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": err.to_string()})),
+        ),
     }
 }
 
@@ -205,6 +286,10 @@ async fn identity_entra_oidc_mock_complete(
     Query(q): Query<HashMap<String, String>>,
     State(st): State<WebState>,
 ) -> impl IntoResponse {
+    if !st.allow_mock_identity {
+        return (StatusCode::NOT_FOUND, Html("mock identity disabled".to_string())).into_response();
+    }
+
     // Delegate to the adapter callback handler.
     let adapter = st
         .provider
@@ -242,6 +327,14 @@ async fn identity_entra_oidc_callback(
 }
 
 async fn api_session(Path(sid): Path<String>, State(st): State<WebState>) -> impl IntoResponse {
+    if st.pohp_attestation_secret.is_some() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error":"session_api_disabled_in_production"})),
+        )
+            .into_response();
+    }
+
     if let Some(s) = st.provider.get_session(&sid) {
         let env = match s.status {
             SessionStatus::Approved => st.provider.issue_credential(&sid).ok(),
@@ -264,4 +357,21 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('\"', "&quot;")
         .replace('\'', "&#x27;")
+}
+
+fn authorize_attestation(headers: &HeaderMap, expected_secret: &str) -> bool {
+    let bearer_ok = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(|value| value == expected_secret)
+        .unwrap_or(false);
+
+    let custom_ok = headers
+        .get("x-happ-pohp-secret")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == expected_secret)
+        .unwrap_or(false);
+
+    bearer_ok || custom_ok
 }

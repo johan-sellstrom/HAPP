@@ -5,15 +5,47 @@ import os
 import sys
 import threading
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from happ.identity import IdentityBindingResult
-from happ.provider.issuer import issue_consent_credential
+from happ.provider.issuer import SigningConfigurationError, issue_consent_credential
 from happ.session_store import STORE
 from happ.web.consent_ui import run_ui
 
 
 URL_ELICITATION_REQUIRED = -32042
+
+
+def _runtime_mode() -> str:
+    mode = os.environ.get("HAPP_RUNTIME_MODE", "development").strip().lower()
+    return mode or "development"
+
+
+def _production_mode() -> bool:
+    return _runtime_mode() == "production"
+
+
+def _validate_runtime_config() -> None:
+    if not _production_mode():
+        return
+
+    alg = os.environ.get("HAPP_SIGNING_ALG", "").strip().upper()
+    if alg != "RS256":
+        raise RuntimeError("production mode requires HAPP_SIGNING_ALG=RS256")
+    if not (os.environ.get("HAPP_RS256_PRIVATE_KEY_PEM", "").strip() or os.environ.get("HAPP_RS256_PRIVATE_KEY_FILE", "").strip()):
+        raise RuntimeError("production mode requires RS256 signing key configuration")
+
+    provider_cert_ref = os.environ.get("HAPP_PROVIDER_CERT_REF", "").strip()
+    if not provider_cert_ref or ":demo" in provider_cert_ref or "placeholder" in provider_cert_ref:
+        raise RuntimeError("production mode requires a real HAPP_PROVIDER_CERT_REF")
+
+    if not os.environ.get("HAPP_POHP_ATTESTATION_SECRET", "").strip():
+        raise RuntimeError("production mode requires HAPP_POHP_ATTESTATION_SECRET")
+
+    if os.environ.get("HAPP_ENTRA_MODE", "").strip().lower() != "real":
+        raise RuntimeError("production mode requires HAPP_ENTRA_MODE=real")
+    if not os.environ.get("HAPP_ENTRA_CLIENT_ID", "").strip():
+        raise RuntimeError("production mode requires HAPP_ENTRA_CLIENT_ID")
 
 
 def _jsonrpc_result(id_: Any, result: Any) -> Dict[str, Any]:
@@ -29,9 +61,10 @@ def _jsonrpc_error(id_: Any, code: int, message: str, data: Optional[Any] = None
 
 class HappMcpServer:
     def __init__(self, ui_port: int = 8787) -> None:
-        self.ui_port = ui_port
+        _validate_runtime_config()
         self._req_to_elicitation: Dict[str, str] = {}
         self._ui_server = run_ui(port=ui_port)
+        self.ui_port = self._ui_server.server_port
         self._ui_thread = threading.Thread(target=self._ui_server.serve_forever, daemon=True)
 
     def start(self) -> None:
@@ -146,6 +179,17 @@ class HappMcpServer:
                 },
             )
 
+        if isinstance(sess.issued_credential, dict):
+            cred = sess.issued_credential
+            return _jsonrpc_result(
+                id_,
+                {
+                    "content": [{"type": "text", "text": "Consent credential already issued."}],
+                    "structuredContent": cred,
+                    "isError": False,
+                },
+            )
+
         # Build identity binding if present
         identity_obj: Optional[IdentityBindingResult] = None
         if isinstance(sess.identity_binding, dict):
@@ -159,18 +203,30 @@ class HappMcpServer:
                 evidence=ib.get("evidence"),
             )
 
-        pohp_level = (sess.requirements.get("pohp") or {}).get("minLevel") if isinstance(sess.requirements, dict) else None
-        pohp_level = pohp_level or "AAIF-PoHP-3"
+        identity_required = ((sess.requirements.get("identity") or {}).get("mode") == "required") if isinstance(sess.requirements, dict) else False
+        if identity_required and identity_obj is None:
+            return _jsonrpc_error(id_, -32602, "identityBinding is required before issuing a credential")
 
-        cred = issue_consent_credential(
-            issuer="did:web:pp.local",
-            action_intent=sess.action_intent,
-            audience=audience,
-            pohp_level=pohp_level,
-            pohp_method="demo+consent-ui",
-            identity=identity_obj,
-            ttl_seconds=int((sess.requirements.get("pohp") or {}).get("maxCredentialAgeSeconds") or 120),
-        )
+        if not sess.pohp_verified_at or not sess.pohp_level or not sess.pohp_method:
+            return _jsonrpc_error(id_, -32602, "presence verification is required before issuing a credential")
+
+        try:
+            cred = issue_consent_credential(
+                issuer=os.environ.get("HAPP_ISSUER", "did:web:pp.local"),
+                action_intent=sess.action_intent,
+                audience=audience,
+                pohp_level=sess.pohp_level,
+                pohp_method=sess.pohp_method,
+                identity=identity_obj,
+                ttl_seconds=int((sess.requirements.get("pohp") or {}).get("maxCredentialAgeSeconds") or 120),
+                provider_cert_ref=os.environ.get("HAPP_PROVIDER_CERT_REF", "urn:aaif:happ:pcc:demo"),
+            )
+        except SigningConfigurationError as exc:
+            return _jsonrpc_error(id_, -32050, f"Credential signing is not configured: {exc}")
+        except ValueError as exc:
+            return _jsonrpc_error(id_, -32602, str(exc))
+
+        STORE.store_issued_credential(sess.elicitation_id, cred)
 
         return _jsonrpc_result(
             id_,

@@ -17,6 +17,8 @@ pub enum VerifyError {
     PresentationHashMismatch,
     #[error("PoHP level too low")]
     PohpTooLow,
+    #[error("invalid PoHP level: {0}")]
+    InvalidPohpLevel(String),
     #[error("identityBinding required")]
     IdentityRequired,
     #[error("identity scheme not allowed")]
@@ -27,13 +29,14 @@ pub enum VerifyError {
     Serialization(String),
 }
 
-fn pohp_rank(level: Option<&str>) -> i32 {
+fn pohp_rank(level: Option<&str>) -> Result<i32, VerifyError> {
     match level {
-        Some("AAIF-PoHP-1") => 1,
-        Some("AAIF-PoHP-2") => 2,
-        Some("AAIF-PoHP-3") => 3,
-        Some("AAIF-PoHP-4") => 4,
-        _ => 0,
+        None => Ok(0),
+        Some("AAIF-PoHP-1") => Ok(1),
+        Some("AAIF-PoHP-2") => Ok(2),
+        Some("AAIF-PoHP-3") => Ok(3),
+        Some("AAIF-PoHP-4") => Ok(4),
+        Some(other) => Err(VerifyError::InvalidPohpLevel(other.to_string())),
     }
 }
 
@@ -73,7 +76,7 @@ pub fn verify_claims(
 
     if let Some(min_level) = options.min_pohp_level.as_deref() {
         let got = claims.assurance.as_ref().and_then(|a| a.level.as_deref());
-        if pohp_rank(got) < pohp_rank(Some(min_level)) {
+        if pohp_rank(got)? < pohp_rank(Some(min_level))? {
             return Err(VerifyError::PohpTooLow);
         }
     }
@@ -164,5 +167,66 @@ mod tests {
         };
 
         verify_claims(&claims, &intent, &opts).expect("verification should pass");
+    }
+
+    #[test]
+    fn rejects_invalid_policy_pohp_level() {
+        let intent = ActionIntent {
+            profile: Some("test".to_string()),
+            audience: Some(Audience {
+                id: Some("did:web:rp.example".to_string()),
+                name: Some("RP".to_string()),
+            }),
+            agent: Some(Agent {
+                id: Some("agent:1".to_string()),
+                name: Some("Agent".to_string()),
+                software: None,
+            }),
+            action: Some(Action {
+                action_type: Some("test.action".to_string()),
+                parameters: None,
+            }),
+            constraints: Some(Constraints {
+                expires_at: None,
+                one_time: Some(true),
+                max_uses: None,
+                envelope: None,
+            }),
+            display: Some(Display {
+                title: Some("T".to_string()),
+                summary: Some("S".to_string()),
+                risk_notice: None,
+                language: Some("en".to_string()),
+            }),
+        };
+
+        let intent_hash = compute_intent_hash(&intent).unwrap();
+        let view = derive_signing_view(&intent);
+        let pres_hash = compute_presentation_hash(&view).unwrap();
+
+        let claims = HappClaims {
+            aud: Some("did:web:rp.example".to_string()),
+            exp: Some(9_999_999_999),
+            iat: Some(1),
+            intent_hash: Some(intent_hash),
+            presentation_hash: Some(pres_hash),
+            assurance: Some(Assurance {
+                level: Some("AAIF-PoHP-3".to_string()),
+            }),
+            identity_binding: None,
+            challenge_id: None,
+        };
+
+        let opts = VerifyOptions {
+            expected_aud: "did:web:rp.example".to_string(),
+            now_epoch_seconds: Some(100),
+            min_pohp_level: Some("NOT-A-REAL-LEVEL".to_string()),
+            identity_required: false,
+            allowed_identity_schemes: vec![],
+            expected_challenge_id: None,
+        };
+
+        let err = verify_claims(&claims, &intent, &opts).expect_err("verification should fail");
+        assert!(matches!(err, VerifyError::InvalidPohpLevel(_)));
     }
 }

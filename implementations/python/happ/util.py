@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict
+
+import rfc8785
 
 
 def b64url_encode(data: bytes) -> str:
@@ -26,14 +27,11 @@ def now_utc() -> datetime:
 
 
 def json_canonical(obj: Any) -> str:
-    # NOTE: This is a pragmatic deterministic encoding for the reference implementation.
-    # The spec requires RFC 8785 (JCS). Implementers should use a true JCS library.
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return rfc8785.dumps(obj).decode("utf-8")
 
 
 def sha256_prefixed(obj: Any) -> str:
-    canon = json_canonical(obj).encode("utf-8")
-    return "sha256:" + sha256_b64url(canon)
+    return "sha256:" + sha256_b64url(rfc8785.dumps(obj))
 
 
 @dataclass(frozen=True)

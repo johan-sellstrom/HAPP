@@ -44,3 +44,15 @@ test("verifyClaims rejects expired claims", () => {
     /expired/,
   );
 });
+
+test("verifyClaims rejects invalid PoHP policy levels", () => {
+  const claims = makeClaims();
+  assert.throws(
+    () =>
+      verifyClaims(claims, actionIntent, {
+        expectedAud: "did:web:rp.example",
+        minPoHpLevel: "NOT-A-REAL-LEVEL" as never,
+      }),
+    /invalid PoHP level/,
+  );
+});

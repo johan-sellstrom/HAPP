@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Optional
 
 from happ.util import sha256_prefixed
 
 
 def compute_intent_hash(action_intent: Dict[str, Any]) -> str:
-    # Spec requires RFC8785 JCS. Here we use deterministic JSON encoding for demo.
     return sha256_prefixed(action_intent)
 
 
 def normalize_profile(profile: Optional[str]) -> str:
     return profile or "aaif.happ.profile.generic/v0.3"
+
+
+def _omit_none_members(value: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: member for key, member in value.items() if member is not None}
 
 
 def derive_signing_view(action_intent: Dict[str, Any]) -> Dict[str, Any]:
@@ -29,32 +32,32 @@ def derive_signing_view(action_intent: Dict[str, Any]) -> Dict[str, Any]:
 
     signing_view: Dict[str, Any] = {
         "profile": profile,
-        "audience": {
+        "audience": _omit_none_members({
             "id": audience.get("id"),
             "name": audience.get("name"),
-        },
-        "agent": {
+        }),
+        "agent": _omit_none_members({
             "id": agent.get("id"),
             "name": agent.get("name"),
             "software": agent.get("software"),
-        },
-        "action": {
+        }),
+        "action": _omit_none_members({
             "type": action.get("type"),
             "parameters": action.get("parameters"),
-        },
-        "constraints": {
+        }),
+        "constraints": _omit_none_members({
             "expiresAt": constraints.get("expiresAt"),
             "oneTime": constraints.get("oneTime"),
             "maxUses": constraints.get("maxUses"),
             "envelope": constraints.get("envelope"),
-        },
-        "display": {
+        }),
+        "display": _omit_none_members({
             # display hints are included but MUST NOT be treated as sole truth
             "title": (action_intent.get("display") or {}).get("title"),
             "summary": (action_intent.get("display") or {}).get("summary"),
             "riskNotice": (action_intent.get("display") or {}).get("riskNotice"),
             "language": (action_intent.get("display") or {}).get("language"),
-        },
+        }),
     }
 
     return signing_view

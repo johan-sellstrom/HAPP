@@ -15,5 +15,5 @@ Each SDK exposes a consistent core surface:
 
 Notes:
 
-- Canonicalization in these SDKs is deterministic JSON encoding for interoperability in this repository.
-- The HAPP spec requires RFC 8785 JCS for strict production conformance.
+- Canonicalization in these SDKs now uses RFC 8785 JCS.
+- The SDK hash tests cover canonical ordering and stable hashing behavior across the three implementations.

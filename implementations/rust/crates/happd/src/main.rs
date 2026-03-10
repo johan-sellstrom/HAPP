@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use happ_crypto::{JwtCodec, JwtSigningAlg};
@@ -13,6 +13,12 @@ use happ_provider::adapters::{
 };
 use happ_provider::{Provider, ProviderConfig};
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum RuntimeMode {
+    Development,
+    Production,
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "happd",
@@ -20,6 +26,10 @@ use happ_provider::{Provider, ProviderConfig};
     about = "HAPP reference provider (MCP stdio + URL UI)"
 )]
 struct Args {
+    /// Runtime hardening mode.
+    #[arg(long, value_enum, default_value_t = RuntimeMode::Development)]
+    mode: RuntimeMode,
+
     /// Web UI bind address, e.g. 127.0.0.1:8787
     #[arg(long, default_value = "127.0.0.1:8787")]
     web_addr: SocketAddr,
@@ -57,6 +67,10 @@ struct Args {
     #[arg(long, default_value_t = 120)]
     credential_ttl_seconds: i64,
 
+    /// Provider certification reference URI.
+    #[arg(long)]
+    provider_cert_ref: Option<String>,
+
     /// Identity adapter to register: entra_oidc (real if configured, otherwise mock)
     #[arg(long, default_value = "entra_oidc")]
     identity_adapter: String,
@@ -72,6 +86,10 @@ struct Args {
     /// Entra client secret (optional for public clients)
     #[arg(long)]
     entra_client_secret: Option<String>,
+
+    /// Shared secret for external PoHP attestation API.
+    #[arg(long)]
+    pohp_attestation_secret: Option<String>,
 }
 
 #[tokio::main]
@@ -81,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let args = Args::parse();
+    validate_runtime_args(&args)?;
 
     let web_base_url = args
         .web_base_url
@@ -118,9 +137,11 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Provider certification ref (placeholder)
     let provider_cert = happ_core::types::ProviderCertificationRef {
-        reference: "https://aaif.example/certifications/provider/placeholder".to_string(),
+        reference: args
+            .provider_cert_ref
+            .clone()
+            .unwrap_or_else(|| "https://aaif.example/certifications/provider/placeholder".to_string()),
         hash: None,
         embedded: None,
     };
@@ -133,10 +154,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Register adapters
     let mut reg = AdapterRegistry::new();
+    let allow_mock_identity = matches!(args.mode, RuntimeMode::Development);
+    let allow_mock_pohp = matches!(args.mode, RuntimeMode::Development);
 
-    // Always register a mock Entra adapter under the standard scheme name `entra_oidc`.
-    // If real Entra config is provided, we overwrite it with the real PKCE adapter.
-    reg.register(std::sync::Arc::new(EntraMockAdapter::new()));
+    if allow_mock_identity {
+        reg.register(std::sync::Arc::new(EntraMockAdapter::new()));
+    }
 
     if args.identity_adapter.contains("entra_oidc") {
         if let Some(client_id) = args.entra_client_id.clone() {
@@ -169,7 +192,58 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("MCP stdio: running (connect with your MCP host)");
 
     // Web server (async)
-    happ_provider::web::run_web_server(provider, args.web_addr, web_base_url).await?;
+    happ_provider::web::run_web_server(
+        provider,
+        args.web_addr,
+        web_base_url,
+        allow_mock_pohp,
+        allow_mock_identity,
+        args.pohp_attestation_secret.clone(),
+    )
+    .await?;
+
+    Ok(())
+}
+
+fn validate_runtime_args(args: &Args) -> anyhow::Result<()> {
+    if !matches!(args.mode, RuntimeMode::Production) {
+        return Ok(());
+    }
+
+    if args.signing_alg != "RS256" {
+        anyhow::bail!("production mode requires --signing-alg RS256");
+    }
+
+    let signing_key = args
+        .signing_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("production mode requires --signing-key"))?;
+    let public_key = args
+        .public_key
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("production mode requires --public-key"))?;
+
+    for path in [signing_key, public_key] {
+        if path.components().any(|component| component.as_os_str() == "examples") {
+            anyhow::bail!("production mode forbids example signing keys: {}", path.display());
+        }
+    }
+
+    let provider_cert_ref = args
+        .provider_cert_ref
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("production mode requires --provider-cert-ref"))?;
+    if provider_cert_ref.contains("placeholder") || provider_cert_ref.contains(":demo") {
+        anyhow::bail!("production mode requires a real provider certification reference");
+    }
+
+    if args.pohp_attestation_secret.as_deref().unwrap_or("").is_empty() {
+        anyhow::bail!("production mode requires --pohp-attestation-secret");
+    }
+
+    if args.identity_adapter.contains("entra_oidc") && args.entra_client_id.is_none() {
+        anyhow::bail!("production mode requires --entra-client-id when using entra_oidc");
+    }
 
     Ok(())
 }

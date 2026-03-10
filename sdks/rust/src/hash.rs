@@ -1,33 +1,13 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use std::collections::BTreeMap;
 use serde_json::Value;
+use serde_json_canonicalizer::to_string as to_jcs_string;
 use sha2::{Digest, Sha256};
 
 use crate::types::{Action, ActionIntent, Agent, Audience, Constraints, Display, SigningView};
 
 fn canonical_json(value: &Value) -> String {
-    // Pragmatic deterministic encoding for SDK interop in this repository.
-    // The protocol spec requires RFC 8785 JCS for strict conformance.
-    fn sort_value(v: &Value) -> Value {
-        match v {
-            Value::Object(map) => {
-                let mut out = serde_json::Map::new();
-                let mut sorted: BTreeMap<String, Value> = BTreeMap::new();
-                for (k, v) in map {
-                    sorted.insert(k.clone(), sort_value(v));
-                }
-                for (k, v) in sorted {
-                    out.insert(k, v);
-                }
-                Value::Object(out)
-            }
-            Value::Array(items) => Value::Array(items.iter().map(sort_value).collect()),
-            _ => v.clone(),
-        }
-    }
-
-    serde_json::to_string(&sort_value(value)).unwrap_or_else(|_| "null".to_string())
+    to_jcs_string(value).expect("serde_json::Value should be serializable as RFC 8785 JCS")
 }
 
 pub fn sha256_prefixed(value: &Value) -> String {
@@ -78,4 +58,50 @@ pub fn derive_signing_view(action_intent: &ActionIntent) -> SigningView {
 pub fn compute_presentation_hash(signing_view: &SigningView) -> Result<String, serde_json::Error> {
     let v = serde_json::to_value(signing_view)?;
     Ok(sha256_prefixed(&v))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn canonical_json_uses_rfc_8785_jcs() {
+        let value = json!({
+            "z": [3, null, "A\u{000f}"],
+            "b": 1,
+            "a": {
+                "d": 4.5,
+                "c": 0.002,
+                "e": 1e30
+            }
+        });
+
+        assert_eq!(
+            canonical_json(&value),
+            r#"{"a":{"c":0.002,"d":4.5,"e":1e+30},"b":1,"z":[3,null,"A\u000f"]}"#
+        );
+    }
+
+    #[test]
+    fn sha256_prefixed_is_stable_across_object_key_order() {
+        let left = json!({
+            "b": 1,
+            "a": {
+                "d": 4.5,
+                "c": 0.002,
+                "e": 1e30
+            }
+        });
+        let right = json!({
+            "a": {
+                "c": 0.002,
+                "e": 1e30,
+                "d": 4.5
+            },
+            "b": 1
+        });
+
+        assert_eq!(sha256_prefixed(&left), sha256_prefixed(&right));
+    }
 }

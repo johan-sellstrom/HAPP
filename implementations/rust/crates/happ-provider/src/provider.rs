@@ -45,6 +45,9 @@ pub struct Session {
 
     /// Whether the user completed a PoHP (presence) step.
     pub pohp_verified_at: Option<DateTime<Utc>>,
+    pub pohp_method: Option<String>,
+    pub pohp_level: Option<happ_core::level::PoHpLevel>,
+    pub issued_credential: Option<ConsentCredentialEnvelope>,
 
     /// Temporary OIDC state for identity adapters (e.g., Entra PKCE).
     pub oidc: Option<OidcTempState>,
@@ -140,6 +143,9 @@ impl Provider {
             status: SessionStatus::Pending,
             identity: None,
             pohp_verified_at: None,
+            pohp_method: None,
+            pohp_level: None,
+            issued_credential: None,
             oidc: None,
         };
 
@@ -158,12 +164,20 @@ impl Provider {
         Ok(())
     }
 
-    pub fn mark_pohp_verified(&self, session_id: &str) -> HappResult<()> {
+    pub fn mark_pohp_verified(
+        &self,
+        session_id: &str,
+        method: impl Into<String>,
+        level: happ_core::level::PoHpLevel,
+        verified_at: Option<DateTime<Utc>>,
+    ) -> HappResult<()> {
         let mut s = self
             .sessions_by_id
             .get_mut(session_id)
             .ok_or_else(|| HappError::NotFound(format!("session {session_id} not found")))?;
-        s.pohp_verified_at = Some(Utc::now());
+        s.pohp_verified_at = Some(verified_at.unwrap_or_else(Utc::now));
+        s.pohp_method = Some(method.into());
+        s.pohp_level = Some(level);
         Ok(())
     }
 
@@ -219,19 +233,31 @@ impl Provider {
             ));
         }
 
+        let got_level = s.pohp_level.clone().ok_or_else(|| {
+            HappError::Unauthorized("presence verification level missing".to_string())
+        })?;
+        if !got_level.meets_minimum(&s.requirements.pohp.min_level) {
+            return Err(HappError::Unauthorized(
+                "presence verification level below required minimum".to_string(),
+            ));
+        }
+
         s.status = SessionStatus::Approved;
         Ok(())
     }
 
     pub fn issue_credential(&self, session_id: &str) -> HappResult<ConsentCredentialEnvelope> {
-        let session = self
+        let mut session = self
             .sessions_by_id
-            .get(session_id)
-            .ok_or_else(|| HappError::NotFound(format!("session {session_id} not found")))?
-            .clone();
+            .get_mut(session_id)
+            .ok_or_else(|| HappError::NotFound(format!("session {session_id} not found")))?;
 
         if !matches!(session.status, SessionStatus::Approved) {
             return Err(HappError::Unauthorized("session not approved".to_string()));
+        }
+
+        if let Some(existing) = &session.issued_credential {
+            return Ok(existing.clone());
         }
 
         // Build intent and presentation hashes
@@ -252,10 +278,16 @@ impl Provider {
 
         let verified_at = session.pohp_verified_at.unwrap_or(now);
 
+        let pohp_method = session.pohp_method.clone().ok_or_else(|| {
+            HappError::Invalid("presence verification method missing".to_string())
+        })?;
+
         let assurance = Assurance {
-            level: session.requirements.pohp.min_level.clone(),
+            level: session.pohp_level.clone().ok_or_else(|| {
+                HappError::Invalid("presence verification level missing".to_string())
+            })?,
             verified_at,
-            method: "mock".to_string(),
+            method: pohp_method,
             device_binding: None,
         };
 
@@ -279,11 +311,13 @@ impl Provider {
             .encode(&claims)
             .map_err(|e| HappError::Crypto(e.to_string()))?;
 
-        Ok(ConsentCredentialEnvelope {
+        let issued = ConsentCredentialEnvelope {
             format: "jwt".to_string(),
             credential: jwt,
             claims,
-        })
+        };
+        session.issued_credential = Some(issued.clone());
+        Ok(issued)
     }
 
     /// Start an identity adapter flow for this session (if any).

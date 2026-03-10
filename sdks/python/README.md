@@ -39,5 +39,5 @@ claims = verify_claims(
 
 ## Notes
 
-- Deterministic JSON canonicalization is used in this SDK for compatibility with this repository.
-- Strict production deployments should use RFC 8785 JCS canonicalization.
+- Hashes in this SDK now use RFC 8785 JCS canonicalization.
+- Invalid JCS inputs such as non-finite numbers raise canonicalization errors instead of being silently coerced.

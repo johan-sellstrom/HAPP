@@ -10,6 +10,8 @@ export class VerificationError extends Error {
 
 function pohpOrder(level?: string): number {
   switch (level) {
+    case undefined:
+      return 0;
     case "AAIF-PoHP-1":
       return 1;
     case "AAIF-PoHP-2":
@@ -19,7 +21,7 @@ function pohpOrder(level?: string): number {
     case "AAIF-PoHP-4":
       return 4;
     default:
-      return 0;
+      throw new VerificationError(`invalid PoHP level: ${level}`);
   }
 }
 

@@ -13,9 +13,12 @@ from typing import Any, Dict, Tuple
 import pytest
 
 from happ.adapters.entra_mock import default_mock_issuer
-from happ.provider.issuer import issue_consent_credential, DEFAULT_SECRET
+from happ.provider.issuer import hs256_signing_config, issue_consent_credential
 from happ.identity import IdentityBindingResult
 from happ.util import sha256_b64url, now_utc
+
+
+HS256_TEST_SECRET = b"0123456789abcdef0123456789abcdef"
 
 
 SAMPLE_ACTION_INTENT = {
@@ -65,6 +68,7 @@ def _generate_reference_case() -> Dict[str, Any]:
         pohp_method="demo",
         identity=identity,
         ttl_seconds=120,
+        signing_config=hs256_signing_config(HS256_TEST_SECRET),
     )
     return {"actionIntent": SAMPLE_ACTION_INTENT, "credential": cred}
 
@@ -80,4 +84,4 @@ def happ_case() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def happ_secret() -> bytes:
-    return DEFAULT_SECRET
+    return HS256_TEST_SECRET

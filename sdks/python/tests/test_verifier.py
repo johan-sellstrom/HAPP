@@ -49,6 +49,16 @@ class VerifyClaimsTests(unittest.TestCase):
                 now_epoch_seconds=100,
             )
 
+    def test_verify_claims_rejects_invalid_policy_pohp_level(self):
+        claims = make_claims()
+        with self.assertRaisesRegex(VerificationError, "invalid PoHP level"):
+            verify_claims(
+                claims,
+                ACTION_INTENT,
+                expected_aud="did:web:rp.example",
+                min_pohp_level="NOT-A-REAL-LEVEL",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

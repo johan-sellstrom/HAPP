@@ -10,14 +10,20 @@ class VerificationError(Exception):
     pass
 
 
+_POHP_ORDER = {
+    "AAIF-PoHP-1": 1,
+    "AAIF-PoHP-2": 2,
+    "AAIF-PoHP-3": 3,
+    "AAIF-PoHP-4": 4,
+}
+
+
 def _pohp_rank(level: Optional[str]) -> int:
-    order = {
-        "AAIF-PoHP-1": 1,
-        "AAIF-PoHP-2": 2,
-        "AAIF-PoHP-3": 3,
-        "AAIF-PoHP-4": 4,
-    }
-    return order.get(level, 0)
+    if level is None:
+        return 0
+    if level not in _POHP_ORDER:
+        raise VerificationError(f"invalid PoHP level: {level}")
+    return _POHP_ORDER[level]
 
 
 def verify_claims(
