@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from happ.adapters.entra_mock import default_mock_issuer
 from happ.adapters.entra_oidc_pkce import (
     build_authorize_url,
+    derive_claims_request,
     env_config,
     exchange_code_for_tokens,
     fetch_jwks,
@@ -86,6 +87,34 @@ def _pohp_rank(level: Optional[str]) -> int:
 def _required_pohp_level(requirements: Dict[str, Any]) -> str:
     return ((requirements.get("pohp") or {}).get("minLevel")) or "AAIF-PoHP-3"
 
+
+
+
+def _entra_claims_request_from_requirements(requirements: Dict[str, Any]) -> Optional[str]:
+    identity = requirements.get("identity") if isinstance(requirements, dict) else None
+    if not isinstance(identity, dict):
+        return None
+    scheme_params = identity.get("schemeParams") or {}
+    if not isinstance(scheme_params, dict):
+        scheme_params = {}
+    policy = identity.get("policy") or {}
+    if not isinstance(policy, dict):
+        policy = {}
+
+    explicit = policy.get("entraClaimsChallenge")
+    if explicit is None:
+        explicit = scheme_params.get("entra_claims_challenge")
+
+    contexts = policy.get("requiredAuthContexts")
+    if not isinstance(contexts, list):
+        contexts = []
+
+    return derive_claims_request(
+        required_auth_contexts=[c for c in contexts if isinstance(c, str)],
+        require_mfa=bool(policy.get("requireMfa")),
+        explicit_claims=explicit,
+        include_cp1=True,
+    )
 
 def _parse_verified_at(value: Optional[str]) -> Optional[datetime]:
     if not value:
@@ -372,11 +401,15 @@ class ConsentUIHandler(BaseHTTPRequestHandler):
                 self._send(400, _html_page("Entra not configured", "<h1>Missing HAPP_ENTRA_CLIENT_ID</h1>"))
                 return
 
+            requirements = sess.requirements if isinstance(sess.requirements, dict) else {}
+            claims_request = _entra_claims_request_from_requirements(requirements)
+
             state = secrets.token_urlsafe(24)
             nonce = secrets.token_urlsafe(24)
             verifier = pkce_create_verifier()
             STORE.begin_oidc_flow(session_id, state=state, nonce=nonce, code_verifier=verifier)
-            self._redirect(build_authorize_url(cfg, state=state, nonce=nonce, code_verifier=verifier))
+            STORE.update(session_id, debug={**(sess.debug or {}), "entraClaimsRequest": claims_request} if claims_request else dict(sess.debug or {}))
+            self._redirect(build_authorize_url(cfg, state=state, nonce=nonce, code_verifier=verifier, claims_request=claims_request))
             return
 
         if path.startswith("/api/session/") and path.endswith("/pohp/attest"):

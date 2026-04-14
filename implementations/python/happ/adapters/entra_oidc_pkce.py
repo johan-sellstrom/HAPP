@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import secrets
 import time
 import urllib.parse
@@ -28,6 +29,45 @@ class EntraOidcConfig:
     token_base: str = "https://login.microsoftonline.com"
 
 
+
+
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, separators=(",", ":"), sort_keys=False)
+
+
+def normalize_claims_request(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, dict):
+        return _compact_json(value)
+    raise TypeError("claims request must be a JSON object or string")
+
+
+def derive_claims_request(
+    *,
+    required_auth_contexts: Optional[list[str]] = None,
+    require_mfa: bool = False,
+    explicit_claims: Any = None,
+    include_cp1: bool = True,
+) -> Optional[str]:
+    explicit = normalize_claims_request(explicit_claims)
+    if explicit is not None:
+        return explicit
+
+    claims: Dict[str, Any] = {}
+    if include_cp1:
+        claims.setdefault("access_token", {})["xms_cc"] = {"values": ["cp1"]}
+    contexts = [c for c in (required_auth_contexts or []) if isinstance(c, str) and c.strip()]
+    if contexts:
+        claims.setdefault("id_token", {})["acrs"] = {"essential": True, "values": contexts}
+    elif require_mfa:
+        claims.setdefault("id_token", {})["amr"] = {"essential": True, "values": ["mfa"]}
+
+    return _compact_json(claims) if claims else None
+
 def pkce_create_verifier() -> str:
     # 43-128 chars. Use 64 bytes urlsafe.
     return b64url_encode(secrets.token_bytes(64))
@@ -46,6 +86,7 @@ def build_authorize_url(
     login_hint: Optional[str] = None,
     domain_hint: Optional[str] = None,
     extra_params: Optional[Dict[str, str]] = None,
+    claims_request: Any = None,
 ) -> str:
     endpoint = f"{cfg.authorize_base}/{cfg.tenant_id}/oauth2/v2.0/authorize"
     params = {
@@ -67,6 +108,9 @@ def build_authorize_url(
         params["domain_hint"] = domain_hint
     if extra_params:
         params.update(extra_params)
+    normalized_claims = normalize_claims_request(claims_request)
+    if normalized_claims:
+        params["claims"] = normalized_claims
     return endpoint + "?" + urllib.parse.urlencode(params)
 
 

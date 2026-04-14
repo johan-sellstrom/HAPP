@@ -180,3 +180,9 @@ High-value contributions:
 ## License
 
 Apache-2.0. See `LICENSE`.
+
+
+## Enterprise transport profiles
+
+- Microsoft Entra OIDC identity binding adapter: `specification/draft/adapters/entra-oidc-v0.1.md`
+- Microsoft Entra claims challenge transport profile: `specification/draft/adapters/entra-claims-challenge-v0.1.md`

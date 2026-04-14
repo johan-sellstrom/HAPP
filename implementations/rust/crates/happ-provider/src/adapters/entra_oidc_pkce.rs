@@ -117,6 +117,64 @@ impl EntraOidcPkceAdapter {
         None
     }
 
+
+
+    fn claims_request_from_req(req: &IdentityRequirements) -> Option<String> {
+        if let Some(params) = &req.scheme_params {
+            if let Some(value) = params.get("entra_claims_challenge") {
+                match value {
+                    Value::String(s) if !s.trim().is_empty() => return Some(s.trim().to_string()),
+                    Value::Object(_) => return Some(value.to_string()),
+                    _ => {}
+                }
+            }
+        }
+
+        let policy = req.policy.clone().unwrap_or(IdentityPolicy {
+            require_verified: true,
+            require_embedded_evidence: false,
+            allowed_tenants: vec![],
+            max_id_age_seconds: None,
+            require_mfa: false,
+            required_auth_contexts: vec![],
+            allow_asserted: false,
+        });
+
+        let mut claims = serde_json::Map::new();
+        claims.insert(
+            "access_token".to_string(),
+            serde_json::json!({"xms_cc": {"values": ["cp1"]}}),
+        );
+
+        if !policy.required_auth_contexts.is_empty() {
+            claims.insert(
+                "id_token".to_string(),
+                serde_json::json!({
+                    "acrs": {
+                        "essential": true,
+                        "values": policy.required_auth_contexts
+                    }
+                }),
+            );
+        } else if policy.require_mfa {
+            claims.insert(
+                "id_token".to_string(),
+                serde_json::json!({
+                    "amr": {
+                        "essential": true,
+                        "values": ["mfa"]
+                    }
+                }),
+            );
+        }
+
+        if claims.is_empty() {
+            None
+        } else {
+            Some(Value::Object(claims).to_string())
+        }
+    }
+
     fn policy_from_req(req: &IdentityRequirements) -> IdentityPolicy {
         req.policy.clone().unwrap_or(IdentityPolicy {
             require_verified: true,
@@ -155,7 +213,7 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
         &self,
         provider: Arc<Provider>,
         session: &Session,
-        _req: &IdentityRequirements,
+        req: &IdentityRequirements,
         _base_url: &str,
     ) -> HappResult<IdentityAdapterOutcome> {
         let csrf = Self::random_string(32);
@@ -187,13 +245,15 @@ impl IdentityAdapter for EntraOidcPkceAdapter {
             qp.append_pair("nonce", &nonce);
             qp.append_pair("code_challenge", &pkce_challenge);
             qp.append_pair("code_challenge_method", "S256");
-            // Optional: enforce re-auth
             qp.append_pair("prompt", "select_account");
+            if let Some(claims) = Self::claims_request_from_req(req) {
+                qp.append_pair("claims", &claims);
+            }
         }
 
-        // NOTE: In a hardened implementation you may inject Entra auth context requirements
-        // via claims challenge or other supported mechanisms. This reference keeps it minimal.
-        // The RP expresses policy in req.policy.required_auth_contexts.
+        // This reference adapter now supports optional Entra claims-challenge transport.
+        // The RP can provide an explicit claims request via scheme_params or derive one
+        // from policy.required_auth_contexts / policy.require_mfa.
 
         Ok(IdentityAdapterOutcome::Redirect {
             url: url.to_string(),

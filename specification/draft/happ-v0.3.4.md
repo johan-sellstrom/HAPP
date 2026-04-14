@@ -190,6 +190,18 @@ Additional policy MAY require:
 
 See `adapters/entra-oidc-v0.1.md`.
 
+### 9.4 Optional transport profile: Microsoft Entra claims challenge
+
+The optional profile `aaif.happ.profile.entra-claims-challenge/v0.1` allows a Presence Provider to satisfy enterprise step-up using Microsoft Entra claims-challenge semantics. It reuses the existing `entra_oidc` identity-binding scheme and specifies how the PP carries a decoded or pre-constructed Entra `claims` request through the OAuth 2.0 Authorization Code + PKCE flow.
+
+A PP implementing this profile:
+- MAY accept the claims request through `requirements.identity.policy.entraClaimsChallenge` or `schemeParams.entra_claims_challenge`;
+- SHOULD derive a minimal claims request from `requireMfa` / `requiredAuthContexts` if explicit challenge data is absent;
+- MUST continue to issue a normal HAPP-CC after the enterprise step-up completes;
+- MUST NOT treat the refreshed Entra token as a substitute for HAPP consent.
+
+See `adapters/entra-claims-challenge-v0.1.md`.
+
 ## 10. Relying Party Challenge Mode (HAPP-CHAL)
 
 An RP MAY enforce HAPP by returning a HAPP-CHAL to the client/agent when a request lacks sufficient authorization.

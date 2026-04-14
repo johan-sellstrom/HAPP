@@ -94,3 +94,8 @@ Hardening items for production include:
 - robust anti-CSRF protections for the consent UI
 - hardened DID/JWKS resolution and certification registry checks
 - full PoHP integration (biometrics/liveness) with certified providers
+
+
+## Entra claims challenge transport
+
+The `entra_oidc` adapter can now carry an optional Entra `claims` request on the authorization redirect. This lets enterprise deployments reuse Entra claims-challenge / auth-context policies while still issuing a normal HAPP Consent Credential at the end of the flow.

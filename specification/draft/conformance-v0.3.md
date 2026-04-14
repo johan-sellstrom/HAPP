@@ -16,6 +16,8 @@ This document defines conformance classes and testable requirements (MUST/SHOULD
 - **HAPP-RP-ID-0.3**: Relying Party identity binding verification
 - **HAPP-ADAPTER-entra_oidc-0.1-PP**: PP implementing Entra OIDC adapter
 - **HAPP-ADAPTER-entra_oidc-0.1-RP**: RP verifying Entra OIDC adapter
+- **HAPP-PROFILE-entra_claims_challenge-0.1-PP**: PP supporting Entra claims challenge transport
+- **HAPP-PROFILE-entra_claims_challenge-0.1-RP**: RP / bridge consuming Entra claims challenge transport
 
 ## PP core requirements (HAPP-PP-0.3)
 
@@ -72,3 +74,18 @@ This document defines conformance classes and testable requirements (MUST/SHOULD
 - **ENTRA-RP-01 (MUST)** Verify `tid+oid` match the RP’s authenticated Entra user (or mapping).
 - **ENTRA-RP-02 (MUST when required)** If embedded evidence is present and policy requires, verify signature and claims with bounded clock skew.
 - **ENTRA-RP-03 (MUST when nonce evidence is present)** Verify nonce binding (`nonce` and/or `nonceHash`) for embedded Entra evidence.
+
+
+## Entra claims challenge profile (PP) — HAPP-PROFILE-entra_claims_challenge-0.1-PP
+
+- **ENTRA-CC-PP-01 (MUST)** Accept an explicit claims request via `requirements.identity.policy.entraClaimsChallenge` or `schemeParams.entra_claims_challenge` when present.
+- **ENTRA-CC-PP-02 (SHOULD)** Derive a minimal Entra claims request from `requireMfa` and/or `requiredAuthContexts` when explicit challenge data is absent.
+- **ENTRA-CC-PP-03 (MUST)** Send the effective Entra `claims` parameter on the Authorization Code + PKCE authorization request.
+- **ENTRA-CC-PP-04 (MUST)** Keep `state`, `nonce`, PKCE, and the HAPP session bound together for the entire enterprise step-up flow.
+- **ENTRA-CC-PP-05 (MUST)** Continue to issue a normal HAPP Consent Credential after the Entra step-up completes; the refreshed token alone is not sufficient.
+
+## Entra claims challenge profile (RP/bridge) — HAPP-PROFILE-entra_claims_challenge-0.1-RP
+
+- **ENTRA-CC-RP-01 (MAY)** Request enterprise step-up by providing explicit Entra claims-challenge data in policy.
+- **ENTRA-CC-RP-02 (SHOULD)** Require embedded evidence when direct verification of the refreshed enterprise identity token is necessary.
+- **ENTRA-CC-RP-03 (MUST)** Continue to verify the resulting HAPP Consent Credential in full, including identity binding, rather than relying on the refreshed token alone.
